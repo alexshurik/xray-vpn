@@ -1,0 +1,126 @@
+---
+# Main deployment playbook
+# Run with: ansible-playbook --ask-vault-pass playbooks/deploy.yml
+#
+# Prerequisites:
+# 1. Run bootstrap.yml first to set up SSH key authentication
+# 2. Encrypt vault.yml: ansible-vault encrypt group_vars/all/vault.yml
+# 3. Ensure domain DNS points to VPS IP
+# 4. Ensure ports 80/443 are accessible (cloud firewall configured)
+#
+# Pre-flight checks will verify:
+# - Domain resolves to VPS IP
+# - Ports 80/443 are accessible from internet
+#
+# This playbook orchestrates full deployment with toggles:
+# - VPN core (always): system/docker/firewall/ssl/3x-ui/hardening
+# - Monitoring (optional): Prometheus + Grafana + exporters + Loki/Promtail
+# - Security monitoring (optional): Falco + Tracee + Trivy + Security Findings dashboard
+
+- name: VPN Server Deployment
+  hosts: vpn_servers
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+    - ../group_vars/all/vault.yml
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Display target information
+      ansible.builtin.debug:
+        msg: |
+          Deploying to: {{ ansible_host }}
+          Domain: {{ domain }}
+          Email: {{ email }}
+
+    - name: Run shared pre-flight DNS and port checks
+      ansible.builtin.include_tasks: tasks/preflight_dns_ports.yml
+
+    - name: Set monitoring enabled fact (non-interactive default)
+      ansible.builtin.set_fact:
+        monitoring_enabled: "{{ monitoring_enabled | default(false) | bool }}"
+
+    - name: Set security monitoring enabled fact
+      ansible.builtin.set_fact:
+        security_monitoring_enabled: "{{ security_monitoring_enabled | default(false) | bool }}"
+
+    - name: Assert security monitoring requires monitoring stack
+      ansible.builtin.assert:
+        that:
+          - not (security_monitoring_enabled | bool) or (monitoring_enabled | bool)
+        fail_msg: >
+          security_monitoring_enabled=true requires monitoring_enabled=true
+          because Security Findings dashboard depends on Grafana/Loki/Promtail.
+        success_msg: Deployment mode validated.
+
+    - name: Display deployment mode
+      ansible.builtin.debug:
+        msg: >
+          monitoring={{ 'on' if monitoring_enabled else 'off' }},
+          security_monitoring={{ 'on' if security_monitoring_enabled else 'off' }}
+
+  roles:
+    - role: common
+      tags: [common, system]
+    - role: docker
+      tags: [docker, container]
+    - role: vpn_user
+      tags: [vpn_user, access]
+    - role: firewall
+      tags: [firewall, security]
+    - role: ssl
+      tags: [ssl, certificate]
+    - role: vpn
+      tags: [vpn, panel]
+    - role: hardening
+      tags: [hardening, security]
+    - role: monitoring
+      tags: [monitoring, observability]
+      when: monitoring_enabled | bool
+      vars:
+        monitoring_security_dashboard_state: "{{ 'enable' if (security_monitoring_enabled | bool) else 'disable' }}"
+    - role: security_sensors
+      tags: [security, sensors]
+      when: security_monitoring_enabled | bool
+    - role: trivy_scanner
+      tags: [security, scanner, trivy]
+      when: security_monitoring_enabled | bool
+
+  post_tasks:
+    - name: Deployment complete
+      ansible.builtin.debug:
+        msg: "VPN deployment complete. Panel available at https://{{ domain }}:{{ vpn_panel_port | default(2053) }}"
+
+    - name: Display monitoring endpoints
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          MONITORING STACK DEPLOYED
+          ================================================
+          Grafana Dashboard: {{ 'https' if (grafana_https_enabled | default(true) | bool) else 'http' }}://{{ ansible_host }}:{{ grafana_port | default(3000) }}
+            Login: admin / [from vault_grafana_admin_password]
+
+          Dashboards:
+          - "3X-UI VPN Monitoring"
+          - "3X-UI Daily Usage"
+          - "3X-UI System Health"
+          - "3X-UI VPN Detailed"
+          - "System Overview"
+          ================================================
+      when: monitoring_enabled | bool
+
+    - name: Display security monitoring endpoints
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          SECURITY MONITORING DEPLOYED
+          ================================================
+          Components:
+          - Falco
+          - Tracee
+          - Trivy
+          - Grafana dashboard: "Security Findings"
+          ================================================
+      when: security_monitoring_enabled | bool

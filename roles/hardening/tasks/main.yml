@@ -1,0 +1,19 @@
+---
+# Hardening role entry point
+# Includes: SSH hardening, fail2ban, unattended-upgrades, watchtower
+
+- name: Include SSH hardening tasks
+  ansible.builtin.include_tasks: ssh.yml
+  tags: [ssh, hardening]
+
+- name: Include fail2ban tasks
+  ansible.builtin.include_tasks: fail2ban.yml
+  tags: [fail2ban, security]
+
+- name: Include unattended-upgrades tasks
+  ansible.builtin.include_tasks: unattended.yml
+  tags: [unattended, updates]
+
+- name: Include Watchtower tasks
+  ansible.builtin.include_tasks: watchtower.yml
+  tags: [watchtower, container]

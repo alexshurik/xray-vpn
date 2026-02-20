@@ -1,0 +1,1287 @@
+{
+  "id": null,
+  "uid": "security-findings",
+  "title": "Security Findings",
+  "tags": ["security", "falco", "tracee", "trivy", "loki", "prometheus"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 111,
+  "refresh": "30s",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "tracee_attention_events",
+        "label": "Tracee event filter (regex)",
+        "type": "textbox",
+        "query": "{{ security_tracee_event_regex }}",
+        "current": {
+          "text": "{{ security_tracee_event_regex }}",
+          "value": "{{ security_tracee_event_regex }}"
+        }
+      },
+      {
+        "name": "falco_attention_priority",
+        "label": "Falco priority filter",
+        "type": "textbox",
+        "query": "{{ security_falco_priority_regex }}",
+        "current": {
+          "text": "{{ security_falco_priority_regex }}",
+          "value": "{{ security_falco_priority_regex }}"
+        }
+      },
+      {
+        "name": "falco_ignore_rules",
+        "label": "Falco ignore rule regex",
+        "type": "textbox",
+        "query": "{{ security_falco_ignore_rule_regex }}",
+        "current": {
+          "text": "{{ security_falco_ignore_rule_regex }}",
+          "value": "{{ security_falco_ignore_rule_regex }}"
+        }
+      },
+      {
+        "name": "security_window_short",
+        "label": "Short window",
+        "type": "textbox",
+        "query": "15m",
+        "current": {
+          "text": "15m",
+          "value": "15m"
+        }
+      },
+      {
+        "name": "security_window_long",
+        "label": "Long window",
+        "type": "textbox",
+        "query": "$__range",
+        "current": {
+          "text": "$__range",
+          "value": "$__range"
+        }
+      },
+      {
+        "name": "trivy_severity_focus",
+        "label": "Trivy severity filter",
+        "type": "textbox",
+        "query": "CRITICAL|HIGH",
+        "current": {
+          "text": "CRITICAL|HIGH",
+          "value": "CRITICAL|HIGH"
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Trivy Critical",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "trivy_vulnerabilities_total{severity=\"CRITICAL\"} or vector(0)"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Trivy High",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "trivy_vulnerabilities_total{severity=\"HIGH\"} or vector(0)"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Last Trivy Scan",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "trivy_last_scan_timestamp_seconds * 1000"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "dateTimeAsIso" }, "overrides": [] },
+      "options": {
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Falco Critical+Error",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"Error|Critical|Alert|Emergency\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Tracee High+Critical",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity >= 3 [$security_window_long])) or vector(0)"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Total Events",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)) + (sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | processName!~\"{{ security_tracee_ignore_process_regex | replace('\\\\', '\\\\\\\\') }}\" [$security_window_long])) or vector(0))"
+        }
+      ],
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 2 },
+              { "color": "red", "value": 20 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "auto"
+      }
+    },
+
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Trivy Vulnerability Scanner",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "panels": []
+    },
+    {
+      "id": 101,
+      "type": "bargauge",
+      "title": "Vulnerabilities by Severity",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "trivy_vulnerabilities_total",
+          "legendFormat": "{{ '{{' }}severity{{ '}}' }}"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 6 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "blue", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "orange", "value": 5 },
+              { "color": "red", "value": 10 }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "CRITICAL" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "HIGH" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "MEDIUM" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "LOW" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "UNKNOWN" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }]
+          }
+        ]
+      },
+      "options": {
+        "displayMode": "gradient",
+        "orientation": "horizontal",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "showUnfilled": true,
+        "minVizWidth": 0,
+        "minVizHeight": 10
+      }
+    },
+    {
+      "id": 102,
+      "type": "table",
+      "title": "Vulnerabilities by Target",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (target) (trivy_vulnerabilities_total)",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "thresholds" } },
+        "overrides": []
+      },
+      "options": { "showHeader": true, "footer": { "show": false }, "sortBy": [{ "displayName": "Value", "desc": true }] },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true },
+            "renameByName": { "target": "Target", "Value": "Total Vulns" }
+          }
+        }
+      ]
+    },
+    {
+      "id": 103,
+      "type": "table",
+      "title": "Top CVEs (by frequency)",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(40, sum by (cve, severity) (count_over_time({job=\"security-events\",container=\"trivy-runner\"} | json | event=\"TRIVY_VULN\" | severity=~\"$trivy_severity_focus\" [$security_window_long])))",
+          "queryType": "instant",
+          "instant": true
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 10 },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] },
+      "options": { "showHeader": true, "footer": { "show": false }, "sortBy": [{ "displayName": "Value", "desc": true }] }
+    },
+    {
+      "id": 104,
+      "type": "table",
+      "title": "Trivy Vulnerability Details",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"security-events\",container=\"trivy-runner\"} | json | event=\"TRIVY_VULN\" | severity=~\"$trivy_severity_focus\" | line_format \"{{ '{{' }}.severity{{ '}}' }}||{{ '{{' }}.cve{{ '}}' }}||{{ '{{' }}.target{{ '}}' }}||{{ '{{' }}.package{{ '}}' }}||{{ '{{' }}.installed{{ '}}' }}||{{ '{{' }}.fixed{{ '}}' }}||{{ '{{' }}.title{{ '}}' }}||{{ '{{' }}.description{{ '}}' }}\"",
+          "queryType": "range"
+        }
+      ],
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "filterable": true }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Severity" },
+            "properties": [
+              { "id": "custom.width", "value": 90 },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "CRITICAL": { "color": "red", "text": "CRITICAL" } } },
+                  { "type": "value", "options": { "HIGH": { "color": "orange", "text": "HIGH" } } },
+                  { "type": "value", "options": { "MEDIUM": { "color": "yellow", "text": "MEDIUM" } } },
+                  { "type": "value", "options": { "LOW": { "color": "blue", "text": "LOW" } } }
+                ]
+              },
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "CVE" },
+            "properties": [
+              { "id": "custom.width", "value": 150 },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "View on NVD",
+                    "url": "https://nvd.nist.gov/vuln/detail/${__value.text}",
+                    "targetBlank": true
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Description" },
+            "properties": [
+              { "id": "custom.width", "value": 400 },
+              { "id": "custom.inspect", "value": true }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": { "show": false },
+        "sortBy": [{ "displayName": "Severity", "desc": true }]
+      },
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "Line",
+            "format": "auto",
+            "replace": false
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "id": true, "tsNs": true, "labels": true, "Line": true },
+            "renameByName": {
+              "severity": "Severity",
+              "cve": "CVE",
+              "target": "Target",
+              "package": "Package",
+              "installed": "Installed",
+              "fixed": "Fix Version",
+              "title": "Title",
+              "description": "Description"
+            },
+            "indexByName": {
+              "severity": 0,
+              "cve": 1,
+              "target": 2,
+              "package": 3,
+              "installed": 4,
+              "fixed": 5,
+              "title": 6,
+              "description": 7
+            }
+          }
+        }
+      ]
+    },
+
+    {
+      "id": 200,
+      "type": "row",
+      "title": "Tracee Runtime Detection",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "panels": [
+        {
+          "id": 201,
+          "type": "stat",
+          "title": "Critical (sev=4)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"4\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 0, "y": 29 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 202,
+          "type": "stat",
+          "title": "High (sev=3)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"3\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 6, "y": 29 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 203,
+          "type": "stat",
+          "title": "Medium (sev=2)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"2\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 12, "y": 29 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 204,
+          "type": "stat",
+          "title": "Low (sev=1)",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"1\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 6, "x": 18, "y": 29 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "blue", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 205,
+          "type": "timeseries",
+          "title": "Tracee Events Timeline by Severity",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"4\" [$security_window_short]))",
+              "legendFormat": "Critical (4)"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"3\" [$security_window_short]))",
+              "legendFormat": "High (3)"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"2\" [$security_window_short]))",
+              "legendFormat": "Medium (2)"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | json severity=\"metadata.Properties.Severity\" | severity = \"1\" [$security_window_short]))",
+              "legendFormat": "Low (1)"
+            }
+          ],
+          "gridPos": { "h": 7, "w": 24, "x": 0, "y": 33 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "stacking": { "mode": "normal", "group": "A" },
+                "lineWidth": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Critical (4)" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "High (3)" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Medium (2)" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Low (1)" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+              }
+            ]
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "right" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          }
+        },
+        {
+          "id": 206,
+          "type": "table",
+          "title": "Tracee Detection Details",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | processName!~\"{{ security_tracee_ignore_process_regex | replace('\\\\', '\\\\\\\\') }}\" | json severity=\"metadata.Properties.Severity\", desc=\"metadata.Description\", category=\"metadata.Properties.Category\", technique=\"metadata.Properties.Technique\", mitre_id=\"metadata.Properties.external_id\" | label_format sev_label={{ '{{' }}if eq .severity \"4\"{{ '}}' }}CRITICAL{{ '{{' }}else if eq .severity \"3\"{{ '}}' }}HIGH{{ '{{' }}else if eq .severity \"2\"{{ '}}' }}MEDIUM{{ '{{' }}else{{ '}}' }}LOW{{ '{{' }}end{{ '}}' }} | line_format \"{{ '{{' }}.sev_label{{ '}}' }}||{{ '{{' }}.eventName{{ '}}' }}||{{ '{{' }}.desc{{ '}}' }}||{{ '{{' }}.category{{ '}}' }}||{{ '{{' }}.technique{{ '}}' }}||{{ '{{' }}.mitre_id{{ '}}' }}||{{ '{{' }}.processName{{ '}}' }}||{{ '{{' }}.processId{{ '}}' }}||{{ '{{' }}.userId{{ '}}' }}\"",
+              "queryType": "range"
+            }
+          ],
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 40 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "filterable": true }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Severity" },
+                "properties": [
+                  { "id": "custom.width", "value": 90 },
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      { "type": "value", "options": { "CRITICAL": { "color": "red", "text": "CRITICAL" } } },
+                      { "type": "value", "options": { "HIGH": { "color": "orange", "text": "HIGH" } } },
+                      { "type": "value", "options": { "MEDIUM": { "color": "yellow", "text": "MEDIUM" } } },
+                      { "type": "value", "options": { "LOW": { "color": "blue", "text": "LOW" } } }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "MITRE ID" },
+                "properties": [
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "View on MITRE ATT&CK",
+                        "url": "https://attack.mitre.org/techniques/${__value.text}/",
+                        "targetBlank": true
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Description" },
+                "properties": [
+                  { "id": "custom.width", "value": 350 },
+                  { "id": "custom.inspect", "value": true }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "footer": { "show": false },
+            "sortBy": [{ "displayName": "Severity", "desc": true }]
+          },
+          "transformations": [
+            {
+              "id": "extractFields",
+              "options": {
+                "source": "Line",
+                "format": "auto",
+                "replace": false
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "id": true, "tsNs": true, "labels": true, "Line": true },
+                "renameByName": {
+                  "sev_label": "Severity",
+                  "eventName": "Detection",
+                  "desc": "Description",
+                  "category": "Category",
+                  "technique": "Technique",
+                  "mitre_id": "MITRE ID",
+                  "processName": "Process",
+                  "processId": "PID",
+                  "userId": "UID"
+                },
+                "indexByName": {
+                  "sev_label": 0,
+                  "eventName": 1,
+                  "desc": 2,
+                  "category": 3,
+                  "technique": 4,
+                  "mitre_id": 5,
+                  "processName": 6,
+                  "processId": 7,
+                  "userId": 8
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": 300,
+      "type": "row",
+      "title": "Falco Runtime Alerts",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 50 },
+      "panels": [
+        {
+          "id": 301,
+          "type": "stat",
+          "title": "Emergency+Alert",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"Emergency|Alert\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 5, "x": 0, "y": 51 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "dark-red", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 302,
+          "type": "stat",
+          "title": "Critical",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Critical\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 5, "x": 5, "y": 51 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "red", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 303,
+          "type": "stat",
+          "title": "Error",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Error\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 5, "x": 10, "y": 51 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "orange", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 304,
+          "type": "stat",
+          "title": "Warning",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Warning\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 5, "x": 15, "y": 51 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 305,
+          "type": "stat",
+          "title": "Total",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" [$security_window_long])) or vector(0)"
+            }
+          ],
+          "gridPos": { "h": 4, "w": 4, "x": 20, "y": 51 },
+          "fieldConfig": {
+            "defaults": {
+              "color": { "mode": "thresholds" },
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  { "color": "green", "value": null },
+                  { "color": "yellow", "value": 1 },
+                  { "color": "red", "value": 10 }
+                ]
+              }
+            },
+            "overrides": []
+          },
+          "options": {
+            "colorMode": "value",
+            "graphMode": "none",
+            "justifyMode": "auto",
+            "orientation": "auto",
+            "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+            "textMode": "auto"
+          }
+        },
+        {
+          "id": 306,
+          "type": "table",
+          "title": "Top Falco Rules",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "topk(20, sum by (rule, priority) (count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" [$security_window_long])))",
+              "queryType": "instant",
+              "instant": true
+            }
+          ],
+          "gridPos": { "h": 8, "w": 12, "x": 0, "y": 55 },
+          "fieldConfig": { "defaults": { "color": { "mode": "thresholds" } }, "overrides": [] },
+          "options": { "showHeader": true, "footer": { "show": false }, "sortBy": [{ "displayName": "Value", "desc": true }] }
+        },
+        {
+          "id": 307,
+          "type": "timeseries",
+          "title": "Falco Events Timeline by Priority",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"Emergency|Alert\" | rule!~\"$falco_ignore_rules\" [$security_window_short]))",
+              "legendFormat": "Emergency+Alert"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Critical\" | rule!~\"$falco_ignore_rules\" [$security_window_short]))",
+              "legendFormat": "Critical"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Error\" | rule!~\"$falco_ignore_rules\" [$security_window_short]))",
+              "legendFormat": "Error"
+            },
+            {
+              "refId": "D",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=\"Warning\" | rule!~\"$falco_ignore_rules\" [$security_window_short]))",
+              "legendFormat": "Warning"
+            }
+          ],
+          "gridPos": { "h": 8, "w": 12, "x": 12, "y": 55 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "stacking": { "mode": "normal", "group": "A" },
+                "lineWidth": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Emergency+Alert" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "dark-red" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Critical" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Error" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Warning" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }]
+              }
+            ]
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "right" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          }
+        },
+        {
+          "id": 308,
+          "type": "table",
+          "title": "Falco Alert Details",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" | line_format \"{{ '{{' }}.priority{{ '}}' }}||{{ '{{' }}.rule{{ '}}' }}||{{ '{{' }}.output{{ '}}' }}\"",
+              "queryType": "range"
+            }
+          ],
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 63 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "filterable": true }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Priority" },
+                "properties": [
+                  { "id": "custom.width", "value": 100 },
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      { "type": "value", "options": { "Emergency": { "color": "dark-red", "text": "Emergency" } } },
+                      { "type": "value", "options": { "Alert": { "color": "dark-red", "text": "Alert" } } },
+                      { "type": "value", "options": { "Critical": { "color": "red", "text": "Critical" } } },
+                      { "type": "value", "options": { "Error": { "color": "orange", "text": "Error" } } },
+                      { "type": "value", "options": { "Warning": { "color": "yellow", "text": "Warning" } } }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Details" },
+                "properties": [
+                  { "id": "custom.inspect", "value": true }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "footer": { "show": false },
+            "sortBy": [{ "displayName": "Priority", "desc": true }]
+          },
+          "transformations": [
+            {
+              "id": "extractFields",
+              "options": {
+                "source": "Line",
+                "format": "auto",
+                "replace": false
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "id": true, "tsNs": true, "labels": true, "Line": true },
+                "renameByName": {
+                  "priority": "Priority",
+                  "rule": "Rule",
+                  "output": "Details"
+                },
+                "indexByName": {
+                  "priority": 0,
+                  "rule": 1,
+                  "output": 2
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": 400,
+      "type": "row",
+      "title": "Unified View",
+      "collapsed": true,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 73 },
+      "panels": [
+        {
+          "id": 401,
+          "type": "timeseries",
+          "title": "Combined Security Events Timeline",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" [$security_window_short]))",
+              "legendFormat": "Falco"
+            },
+            {
+              "refId": "B",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | processName!~\"{{ security_tracee_ignore_process_regex | replace('\\\\', '\\\\\\\\') }}\" [$security_window_short]))",
+              "legendFormat": "Tracee"
+            },
+            {
+              "refId": "C",
+              "expr": "sum(count_over_time({job=\"security-events\",container=\"trivy-runner\"} | json | event=\"TRIVY_VULN\" [$security_window_short]))",
+              "legendFormat": "Trivy"
+            }
+          ],
+          "gridPos": { "h": 8, "w": 24, "x": 0, "y": 74 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "bars",
+                "fillOpacity": 80,
+                "stacking": { "mode": "normal", "group": "A" },
+                "lineWidth": 0
+              }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Falco" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Tracee" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Trivy" },
+                "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }]
+              }
+            ]
+          },
+          "options": {
+            "legend": { "displayMode": "table", "placement": "bottom" },
+            "tooltip": { "mode": "multi", "sort": "desc" }
+          }
+        },
+        {
+          "id": 402,
+          "type": "table",
+          "title": "Unified Action Queue",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "{job=\"security-events\",container=\"falco\"} | json | priority=~\"$falco_attention_priority\" | rule!~\"$falco_ignore_rules\" | line_format \"FALCO||{{ '{{' }}.priority{{ '}}' }}||{{ '{{' }}.rule{{ '}}' }}||{{ '{{' }}.output{{ '}}' }}\""
+            },
+            {
+              "refId": "B",
+              "expr": "{job=\"security-events\",container=\"tracee\"} | json | eventName=~\"$tracee_attention_events\" | processName!~\"{{ security_tracee_ignore_process_regex | replace('\\\\', '\\\\\\\\') }}\" | json severity=\"metadata.Properties.Severity\", desc=\"metadata.Description\" | label_format sev_label={{ '{{' }}if eq .severity \"4\"{{ '}}' }}CRITICAL{{ '{{' }}else if eq .severity \"3\"{{ '}}' }}HIGH{{ '{{' }}else if eq .severity \"2\"{{ '}}' }}MEDIUM{{ '{{' }}else{{ '}}' }}LOW{{ '{{' }}end{{ '}}' }} | line_format \"TRACEE||{{ '{{' }}.sev_label{{ '}}' }}||{{ '{{' }}.eventName{{ '}}' }}||{{ '{{' }}.desc{{ '}}' }}\""
+            },
+            {
+              "refId": "C",
+              "expr": "{job=\"security-events\",container=\"trivy-runner\"} | json | event=\"TRIVY_VULN\" | severity=~\"$trivy_severity_focus\" | line_format \"TRIVY||{{ '{{' }}.severity{{ '}}' }}||{{ '{{' }}.cve{{ '}}' }} {{ '{{' }}.target{{ '}}' }}||{{ '{{' }}.title{{ '}}' }}\""
+            }
+          ],
+          "gridPos": { "h": 10, "w": 24, "x": 0, "y": 82 },
+          "fieldConfig": {
+            "defaults": {
+              "custom": { "filterable": true }
+            },
+            "overrides": [
+              {
+                "matcher": { "id": "byName", "options": "Source" },
+                "properties": [
+                  { "id": "custom.width", "value": 80 }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Severity" },
+                "properties": [
+                  { "id": "custom.width", "value": 90 },
+                  { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "basic" } },
+                  {
+                    "id": "mappings",
+                    "value": [
+                      { "type": "value", "options": { "CRITICAL": { "color": "red", "text": "CRITICAL" } } },
+                      { "type": "value", "options": { "Critical": { "color": "red", "text": "Critical" } } },
+                      { "type": "value", "options": { "HIGH": { "color": "orange", "text": "HIGH" } } },
+                      { "type": "value", "options": { "Error": { "color": "orange", "text": "Error" } } },
+                      { "type": "value", "options": { "MEDIUM": { "color": "yellow", "text": "MEDIUM" } } },
+                      { "type": "value", "options": { "Warning": { "color": "yellow", "text": "Warning" } } },
+                      { "type": "value", "options": { "LOW": { "color": "blue", "text": "LOW" } } },
+                      { "type": "value", "options": { "Emergency": { "color": "dark-red", "text": "Emergency" } } },
+                      { "type": "value", "options": { "Alert": { "color": "dark-red", "text": "Alert" } } }
+                    ]
+                  }
+                ]
+              },
+              {
+                "matcher": { "id": "byName", "options": "Detail" },
+                "properties": [
+                  { "id": "custom.inspect", "value": true }
+                ]
+              }
+            ]
+          },
+          "options": {
+            "showHeader": true,
+            "footer": { "show": false },
+            "sortBy": [{ "displayName": "Time", "desc": true }]
+          },
+          "transformations": [
+            {
+              "id": "extractFields",
+              "options": {
+                "source": "Line",
+                "format": "auto",
+                "replace": false
+              }
+            },
+            {
+              "id": "organize",
+              "options": {
+                "excludeByName": { "id": true, "tsNs": true, "labels": true, "Line": true },
+                "renameByName": {
+                  "field_0": "Source",
+                  "field_1": "Severity",
+                  "field_2": "Finding",
+                  "field_3": "Detail"
+                },
+                "indexByName": {
+                  "field_0": 0,
+                  "field_1": 1,
+                  "field_2": 2,
+                  "field_3": 3
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

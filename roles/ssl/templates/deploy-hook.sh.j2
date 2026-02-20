@@ -1,0 +1,52 @@
+#!/bin/bash
+# Certbot deploy hook: Copy renewed certificates to 3x-ui directory
+# This script runs after each successful certificate renewal
+# Source: https://eff-certbot.readthedocs.io/en/stable/using.html
+
+set -e
+
+DOMAIN="{{ domain }}"
+DEST_DIR="{{ ssl_cert_dest_dir }}"
+GRAFANA_DEST_DIR="{{ ssl_grafana_cert_dest_dir }}"
+GRAFANA_GROUP="{{ ssl_grafana_cert_group }}"
+
+# Only process our domain
+if [ "$RENEWED_LINEAGE" = "/etc/letsencrypt/live/$DOMAIN" ]; then
+    echo "Copying renewed certificates for $DOMAIN to $DEST_DIR"
+
+    cp "$RENEWED_LINEAGE/fullchain.pem" "$DEST_DIR/fullchain.pem"
+    cp "$RENEWED_LINEAGE/privkey.pem" "$DEST_DIR/privkey.pem"
+
+    chmod 644 "$DEST_DIR/fullchain.pem"
+    chmod 600 "$DEST_DIR/privkey.pem"
+
+    # Optionally mirror certs for Grafana HTTPS (if monitoring stack is present)
+    if [ -d "$GRAFANA_DEST_DIR" ]; then
+        echo "Copying renewed certificates for Grafana to $GRAFANA_DEST_DIR"
+
+        cp "$RENEWED_LINEAGE/fullchain.pem" "$GRAFANA_DEST_DIR/fullchain.pem"
+        cp "$RENEWED_LINEAGE/privkey.pem" "$GRAFANA_DEST_DIR/privkey.pem"
+
+        if chown root:"$GRAFANA_GROUP" "$GRAFANA_DEST_DIR/fullchain.pem" "$GRAFANA_DEST_DIR/privkey.pem"; then
+            chmod 640 "$GRAFANA_DEST_DIR/fullchain.pem"
+            chmod 640 "$GRAFANA_DEST_DIR/privkey.pem"
+        else
+            echo "Warning: could not set group $GRAFANA_GROUP on Grafana certs, falling back to mode 644"
+            chmod 644 "$GRAFANA_DEST_DIR/fullchain.pem"
+            chmod 644 "$GRAFANA_DEST_DIR/privkey.pem"
+        fi
+
+        if docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q '^grafana$'; then
+            echo "Restarting Grafana container..."
+            docker restart grafana
+        fi
+    fi
+
+    # Restart 3x-ui container to pick up new certificate
+    if docker ps --format '{{ '{{' }}.Names{{ '}}' }}' | grep -q '^3x-ui$'; then
+        echo "Restarting 3x-ui container..."
+        docker restart 3x-ui
+    fi
+
+    echo "Certificate renewal complete for $DOMAIN"
+fi

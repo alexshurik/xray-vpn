@@ -1,0 +1,186 @@
+---
+# Verify monitoring services are healthy
+
+- name: Wait for Prometheus to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ prometheus_port }}/-/healthy"
+    method: GET
+    status_code: 200
+  register: prometheus_ready
+  until: prometheus_ready.status == 200
+  retries: 30
+  delay: 2
+
+- name: Wait for Grafana to be ready
+  ansible.builtin.uri:
+    url: "{{ 'https' if (grafana_https_enabled | bool) else 'http' }}://127.0.0.1:{{ grafana_port }}/api/health"
+    method: GET
+    status_code: 200
+    validate_certs: false
+  register: grafana_ready
+  until: grafana_ready.status == 200
+  retries: 30
+  delay: 2
+
+- name: Wait for 3x-ui-exporter to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ exporter_port }}/metrics"
+    method: GET
+    status_code: 200
+  register: exporter_ready
+  until: exporter_ready.status == 200
+  retries: 30
+  delay: 2
+
+- name: Assert Prometheus is healthy
+  ansible.builtin.assert:
+    that:
+      - prometheus_ready.status == 200
+    fail_msg: "Prometheus failed to start or is not healthy"
+    success_msg: "Prometheus is running and healthy"
+
+- name: Assert Grafana is healthy
+  ansible.builtin.assert:
+    that:
+      - grafana_ready.status == 200
+    fail_msg: "Grafana failed to start or is not healthy"
+    success_msg: "Grafana is running and healthy"
+
+- name: Assert 3x-ui-exporter is healthy
+  ansible.builtin.assert:
+    that:
+      - exporter_ready.status == 200
+    fail_msg: "3x-ui-exporter failed to start or is not healthy"
+    success_msg: "3x-ui-exporter is running and healthy"
+
+- name: Wait for node-exporter to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:9100/metrics"
+    method: GET
+    status_code: 200
+  register: node_exporter_ready
+  until: node_exporter_ready.status == 200
+  retries: 15
+  delay: 2
+
+- name: Assert node-exporter is healthy
+  ansible.builtin.assert:
+    that:
+      - node_exporter_ready.status == 200
+    fail_msg: "node-exporter failed to start or is not healthy"
+    success_msg: "node-exporter is running and healthy"
+
+- name: Wait for Loki to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ loki_port }}/ready"
+    method: GET
+    status_code: 200
+  register: loki_ready
+  until: loki_ready.status == 200
+  retries: 15
+  delay: 2
+
+- name: Assert Loki is healthy
+  ansible.builtin.assert:
+    that:
+      - loki_ready.status == 200
+    fail_msg: "Loki failed to start or is not healthy"
+    success_msg: "Loki is running and healthy"
+
+- name: Wait for Promtail to be ready
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ promtail_port }}/ready"
+    method: GET
+    status_code: 200
+  register: promtail_ready
+  until: promtail_ready.status == 200
+  retries: 15
+  delay: 2
+
+- name: Assert Promtail is healthy
+  ansible.builtin.assert:
+    that:
+      - promtail_ready.status == 200
+    fail_msg: "Promtail failed to start or is not healthy"
+    success_msg: "Promtail is running and healthy"
+
+- name: Display monitoring endpoints
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+      MONITORING STACK ENDPOINTS
+      ================================================
+      Grafana Dashboard: {{ 'https' if (grafana_https_enabled | bool) else 'http' }}://{{ ansible_host }}:{{ grafana_port }}
+        - Login: {{ grafana_admin_user }} / [from vault_grafana_admin_password]
+        - Pre-configured dashboard: "3X-UI VPN Monitoring"
+
+      Prometheus (internal only): http://127.0.0.1:{{ prometheus_port }}
+        - Query metrics: http://127.0.0.1:{{ prometheus_port }}/graph
+        - Targets: http://127.0.0.1:{{ prometheus_port }}/targets
+
+      3x-ui-exporter: http://127.0.0.1:{{ exporter_port }}/metrics
+        - Raw metrics for debugging
+
+      node-exporter: http://127.0.0.1:9100/metrics
+        - System metrics (CPU, RAM, Disk, Network)
+
+      Loki: http://127.0.0.1:{{ loki_port }}
+        - Centralized security logs storage
+
+      Promtail: http://127.0.0.1:{{ promtail_port }}/metrics
+        - Docker logs shipper (Falco/Tracee/Trivy)
+      ================================================
+
+- name: Display Grafana dashboard info
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+      GRAFANA DASHBOARD READY
+      ================================================
+      Pre-configured dashboards:
+
+      1. "3X-UI VPN Monitoring" - Real-time overview
+         - Online Users count
+         - Client Download/Upload traffic by email
+         - Inbound traffic by remark
+
+      2. "3X-UI Daily Usage" - Traffic analytics
+         - Today's download by client (pie chart)
+         - Top clients today
+         - 7-day traffic trends
+         - Top 10 users by download (24h)
+
+      3. "3X-UI System Health" - Panel monitoring
+         - Panel uptime, memory, threads
+         - Xray version
+         - Exporter health status
+
+      4. "3X-UI VPN Detailed" - Deep VPN analytics
+         - Real-time online users with history
+         - Total inbounds count
+         - Daily/weekly traffic analytics
+         - Inbound traffic summary table
+         - Today's upload/download stats
+
+      5. "System Overview (Node Exporter)" - Server metrics
+         - CPU usage and load average
+         - Memory usage breakdown
+         - Disk usage and I/O
+         - Network traffic and TCP connections
+         - System uptime
+
+      {% if monitoring_security_dashboard_state_effective == 'enable' %}
+      6. "Security Findings" - Unified security dashboard
+         - Trivy critical/high vulnerabilities and target hotspots
+         - Falco attention alerts by rule
+         - Tracee attention events by type
+         - Unified attention event stream (Falco/Tracee/Trivy)
+      {% endif %}
+
+      Available metrics:
+      - x_ui_total_online_users
+      - x_ui_client_up_bytes / x_ui_client_down_bytes
+      - x_ui_inbound_up_bytes / x_ui_inbound_down_bytes
+
+      To view: Login to Grafana → Browse → Dashboards
+      ================================================

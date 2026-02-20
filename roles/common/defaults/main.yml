@@ -1,0 +1,11 @@
+---
+# Cache validity in seconds (3600 = 1 hour)
+common_apt_cache_valid_time: 3600
+common_dist_upgrade_enabled: false
+
+# Base packages required for system operation
+common_base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - python3-debian

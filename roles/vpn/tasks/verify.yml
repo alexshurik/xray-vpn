@@ -1,0 +1,91 @@
+---
+# Verification tasks for 3x-ui deployment
+# Source: https://github.com/MHSanaei/3x-ui/wiki/Configuration
+#
+# These checks run from localhost (external perspective) to verify:
+# 1. Panel is accessible via HTTPS with valid certificate
+# 2. Default admin/admin credentials no longer work
+
+- name: "Health check: Panel accessible via HTTPS"
+  ansible.builtin.uri:
+    url: "https://{{ domain }}:{{ vpn_panel_port }}/"
+    method: GET
+    validate_certs: true
+    status_code: [200, 302]
+    return_content: false
+  register: https_health
+  delegate_to: localhost
+  become: false
+  until: https_health.status in [200, 302]
+  retries: 10
+  delay: 5
+
+- name: Display HTTPS health check result
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+      HTTPS HEALTH CHECK PASSED
+      ================================================
+      URL: https://{{ domain }}:{{ vpn_panel_port }}/
+      Status: {{ https_health.status }}
+      Certificate: Valid (Let's Encrypt)
+      ================================================
+
+- name: "Security check: Verify default credentials rejected"
+  ansible.builtin.uri:
+    url: "https://{{ domain }}:{{ vpn_panel_port }}/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: admin
+      password: admin
+    status_code: [200, 302, 400, 401, 403]
+    validate_certs: true
+    return_content: true
+  register: default_cred_test
+  delegate_to: localhost
+  become: false
+
+- name: Assert default credentials do not work
+  ansible.builtin.assert:
+    that:
+      - "(default_cred_test.cookies_string | default('') | length) == 0"
+    fail_msg: |
+      ================================================================
+      SECURITY CHECK FAILED: Default credentials still work!
+      ================================================================
+
+      The admin/admin credentials should have been changed.
+      Please verify credential configuration and re-run playbook.
+
+      ================================================================
+    success_msg: |
+      ================================================
+      SECURITY CHECK PASSED
+      ================================================
+      Default admin/admin credentials: REJECTED
+      Panel secured with custom credentials
+      ================================================
+
+- name: Deployment verification complete
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+      3x-ui DEPLOYMENT COMPLETE
+      ================================================
+
+      Panel URL: https://{{ domain }}:{{ vpn_panel_port }}/
+      Username: {{ vpn_admin_username }}
+      Password: (stored in vault)
+
+      Container: {{ vpn_container_name }}
+      Restart policy: unless-stopped
+      Data directory: {{ vpn_data_dir }}
+      Certificate directory: {{ vpn_cert_dir }}
+
+      NEXT STEPS:
+      1. Log in to the panel with your credentials
+      2. Create inbound connections for VPN clients
+      3. Configure Reality/VLESS protocols as needed
+
+      ================================================

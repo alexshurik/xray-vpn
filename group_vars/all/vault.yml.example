@@ -1,0 +1,12 @@
+---
+# ENCRYPT THIS FILE: ansible-vault encrypt group_vars/all/vault.yml
+# This file contains sensitive values - NEVER commit unencrypted!
+
+# SSH password (used only during bootstrap for key deployment)
+vault_ssh_password: "your-secure-ssh-password"
+
+# VPN panel admin password
+vault_vpn_admin_password: "your-secure-admin-password"
+
+# Grafana admin password (for monitoring dashboards)
+vault_grafana_admin_password: "your-secure-grafana-password"

@@ -1,0 +1,194 @@
+---
+# Create the first VLESS Reality inbound through 3x-ui API.
+# Task is idempotent: inbound is created only if target port does not exist.
+
+- name: Login to 3x-ui API
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}/login"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ vpn_admin_username }}"
+      password: "{{ vpn_admin_password }}"
+    validate_certs: false
+    status_code: 200
+  register: vpn_panel_login
+  no_log: true
+
+- name: Fetch existing inbounds
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}/panel/api/inbounds/list"
+    method: GET
+    headers:
+      Cookie: "{{ vpn_panel_login.cookies_string }}"
+      X-Requested-With: XMLHttpRequest
+    validate_certs: false
+    status_code: 200
+  register: vpn_inbounds
+  no_log: true
+
+- name: Detect whether initial inbound already exists
+  ansible.builtin.set_fact:
+    vpn_initial_inbound_exists: >-
+      {{
+        (vpn_inbounds.json.obj | default([]))
+        | selectattr('port', 'equalto', (vpn_initial_inbound_port | int))
+        | list
+        | length > 0
+      }}
+
+- name: Generate Reality key pair
+  community.docker.docker_container_exec:
+    container: "{{ vpn_container_name }}"
+    argv:
+      - sh
+      - -lc
+      - |
+        /app/bin/xray-linux-amd64 x25519 | awk -F': ' '
+          /^Private(Key| key)/ { print "PRIVATE=" $2 }
+          /^Public(Key| key)/  { print "PUBLIC=" $2 }
+          /^Password:/         { print "PUBLIC=" $2 }
+        '
+  register: vpn_reality_keys_raw
+  when: not vpn_initial_inbound_exists
+
+- name: Parse Reality keys
+  ansible.builtin.set_fact:
+    vpn_reality_private_key: "{{ (vpn_reality_keys_raw.stdout | regex_findall('PRIVATE=(\\S+)') | first) | default('') }}"
+    vpn_reality_public_key: "{{ (vpn_reality_keys_raw.stdout | regex_findall('PUBLIC=(\\S+)') | first) | default('') }}"
+  when: not vpn_initial_inbound_exists
+
+- name: Validate Reality key generation output
+  ansible.builtin.assert:
+    that:
+      - vpn_reality_private_key | length > 0
+      - vpn_reality_public_key | length > 0
+    fail_msg: "Could not parse Reality key pair from xray output."
+  when: not vpn_initial_inbound_exists
+
+- name: Generate UUID for initial client
+  ansible.builtin.command: cat /proc/sys/kernel/random/uuid
+  register: vpn_initial_client_uuid_cmd
+  changed_when: false
+  when: not vpn_initial_inbound_exists
+
+- name: Generate short ID for Reality
+  ansible.builtin.command: openssl rand -hex 4
+  register: vpn_initial_short_id_cmd
+  changed_when: false
+  when: not vpn_initial_inbound_exists
+
+- name: Build initial inbound settings JSON
+  ansible.builtin.set_fact:
+    vpn_initial_settings_json: >-
+      {{
+        {
+          'clients': [
+            {
+              'id': (vpn_initial_client_uuid_cmd.stdout | trim),
+              'flow': vpn_inbound.flow,
+              'email': vpn_initial_inbound_email,
+              'limitIp': 0,
+              'totalGB': 0,
+              'expiryTime': 0,
+              'enable': true,
+              'tgId': '',
+              'subId': '',
+              'reset': 0
+            }
+          ],
+          'decryption': 'none',
+          'fallbacks': []
+        } | to_json
+      }}
+  when: not vpn_initial_inbound_exists
+
+- name: Build initial inbound stream settings JSON
+  ansible.builtin.set_fact:
+    vpn_initial_stream_settings_json: >-
+      {{
+        {
+          'network': 'tcp',
+          'security': vpn_inbound.security,
+          'externalProxy': [],
+          'realitySettings': {
+            'show': false,
+            'xver': 0,
+            'dest': vpn_inbound.reality_dest,
+            'serverNames': vpn_inbound.reality_server_names,
+            'privateKey': vpn_reality_private_key,
+            'minClient': '',
+            'maxClient': '',
+            'maxTimediff': 0,
+            'shortIds': [(vpn_initial_short_id_cmd.stdout | trim)],
+            'settings': {
+              'publicKey': vpn_reality_public_key,
+              'fingerprint': vpn_inbound.reality_fingerprint,
+              'serverName': '',
+              'spiderX': '/'
+            }
+          },
+          'tcpSettings': {
+            'acceptProxyProtocol': (vpn_inbound.accept_proxy_protocol | bool),
+            'header': {'type': 'none'}
+          }
+        } | to_json
+      }}
+  when: not vpn_initial_inbound_exists
+
+- name: Build initial inbound payload
+  ansible.builtin.set_fact:
+    vpn_initial_inbound_payload:
+      up: 0
+      down: 0
+      total: 0
+      remark: "{{ vpn_initial_inbound_remark }}"
+      enable: true
+      expiryTime: 0
+      listen: ""
+      port: "{{ vpn_initial_inbound_port | int }}"
+      protocol: "{{ vpn_inbound.protocol }}"
+      settings: "{{ vpn_initial_settings_json }}"
+      streamSettings: "{{ vpn_initial_stream_settings_json }}"
+      tag: "inbound-{{ vpn_initial_inbound_port }}"
+      sniffing: >-
+        {{
+          {
+            'enabled': true,
+            'destOverride': ['http', 'tls', 'quic', 'fakedns'],
+            'metadataOnly': false,
+            'routeOnly': false
+          } | to_json
+        }}
+      allocate: >-
+        {{
+          {
+            'strategy': 'always',
+            'refresh': 5,
+            'concurrency': 3
+          } | to_json
+        }}
+  when: not vpn_initial_inbound_exists
+
+- name: Create initial inbound on 3x-ui
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}/panel/api/inbounds/add"
+    method: POST
+    headers:
+      Cookie: "{{ vpn_panel_login.cookies_string }}"
+      X-Requested-With: XMLHttpRequest
+      Content-Type: application/json
+    body_format: json
+    body: "{{ vpn_initial_inbound_payload }}"
+    validate_certs: false
+    status_code: 200
+  register: vpn_initial_inbound_create
+  failed_when: not (vpn_initial_inbound_create.json.success | default(false))
+  when: not vpn_initial_inbound_exists
+  no_log: true
+
+- name: Show initial inbound status
+  ansible.builtin.debug:
+    msg: >-
+      Initial inbound on port {{ vpn_initial_inbound_port }}:
+      {{ 'already exists' if vpn_initial_inbound_exists else 'created' }}.

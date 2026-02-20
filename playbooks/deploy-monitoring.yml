@@ -1,0 +1,46 @@
+---
+- name: Deploy Monitoring Only
+  hosts: vpn_servers
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+    - ../group_vars/all/vault.yml
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Display target information
+      ansible.builtin.debug:
+        msg: |
+          Deploying monitoring to: {{ ansible_host }}
+          Domain: {{ domain }}
+          VPN should already be running - this will NOT touch it
+
+  roles:
+    - role: firewall
+      tags: [firewall]
+      vars:
+        monitoring_enabled: true
+    - role: monitoring
+      tags: [monitoring]
+      vars:
+        monitoring_security_dashboard_state: preserve
+
+  post_tasks:
+    - name: Monitoring deployment complete
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          MONITORING DEPLOYED SUCCESSFULLY
+          ================================================
+          Grafana: {{ 'https' if (grafana_https_enabled | default(true) | bool) else 'http' }}://{{ ansible_host }}:3000
+          Login: admin / [vault password]
+
+          Pre-configured dashboards:
+          - 3X-UI VPN Monitoring - Real-time overview
+          - 3X-UI Daily Usage - Traffic analytics
+          - 3X-UI System Health - Panel monitoring
+          - 3X-UI VPN Detailed - Deep analytics
+          - System Overview (Node Exporter) - Server metrics
+          ================================================

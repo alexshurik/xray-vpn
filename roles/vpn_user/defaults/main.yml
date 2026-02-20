@@ -1,0 +1,5 @@
+---
+vpn_system_user: vpn
+vpn_system_group: vpn
+vpn_system_shell: /bin/bash
+vpn_system_sudo_nopasswd: true

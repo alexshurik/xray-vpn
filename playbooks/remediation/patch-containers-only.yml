@@ -1,0 +1,154 @@
+---
+# Container-only Security Patching
+# Updates Docker images without system package changes
+# Faster, no host downtime, services restart only
+#
+# Usage:
+#   ansible-playbook playbooks/remediation/patch-containers-only.yml --ask-vault-pass
+
+- name: Patch Container Images Only
+  hosts: vpn_servers
+  become: true
+  vars_files:
+    - ../../group_vars/all/vars.yml
+    - ../../group_vars/all/vault.yml
+
+  vars:
+    # Updated images with security patches
+    updated_images:
+      grafana: "grafana/grafana:11.6.0"
+      prometheus: "prom/prometheus:v3.2.1"
+      node_exporter: "prom/node-exporter:v1.9.1"
+      loki: "grafana/loki:3.4.2"
+      promtail: "grafana/promtail:3.4.2"
+
+    compose_dirs:
+      monitoring: "{{ monitoring_compose_dir | default('/opt/monitoring') }}"
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Display container patch plan
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          CONTAINER-ONLY SECURITY PATCHING
+          =====================================================
+          Target: {{ ansible_host }}
+
+          Image updates:
+          {% for name, image in updated_images.items() %}
+          - {{ name }}: {{ image }}
+          {% endfor %}
+
+          Downtime: ~30-60 seconds per service
+          Host system: No changes, no reboot
+          =====================================================
+
+  tasks:
+    - name: Pull updated images
+      community.docker.docker_image:
+        name: "{{ item.value }}"
+        source: pull
+        force_source: true
+      loop: "{{ updated_images | dict2items }}"
+      loop_control:
+        label: "{{ item.key }}"
+      register: image_pulls
+
+    - name: Backup current compose files
+      ansible.builtin.copy:
+        src: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        dest: "{{ compose_dirs.monitoring }}/docker-compose.yml.bak.{{ ansible_date_time.epoch }}"
+        remote_src: true
+        mode: '0644'
+      ignore_errors: true
+
+    - name: Update Grafana image in compose
+      ansible.builtin.replace:
+        path: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        regexp: 'image: grafana/grafana:[^\s]+'
+        replace: "image: {{ updated_images.grafana }}"
+
+    - name: Update Prometheus image in compose
+      ansible.builtin.replace:
+        path: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        regexp: 'image: prom/prometheus:[^\s]+'
+        replace: "image: {{ updated_images.prometheus }}"
+
+    - name: Update Node Exporter image in compose
+      ansible.builtin.replace:
+        path: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        regexp: 'image: prom/node-exporter:[^\s]+'
+        replace: "image: {{ updated_images.node_exporter }}"
+
+    - name: Update Loki image in compose
+      ansible.builtin.replace:
+        path: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        regexp: 'image: grafana/loki[^\s]*'
+        replace: "image: {{ updated_images.loki }}"
+
+    - name: Update Promtail image in compose
+      ansible.builtin.replace:
+        path: "{{ compose_dirs.monitoring }}/docker-compose.yml"
+        regexp: 'image: grafana/promtail[^\s]*'
+        replace: "image: {{ updated_images.promtail }}"
+
+    - name: Restart monitoring stack with new images
+      community.docker.docker_compose_v2:
+        project_src: "{{ compose_dirs.monitoring }}"
+        state: present
+        pull: always
+        recreate: always
+      register: monitoring_restart
+
+    - name: Wait for Grafana health
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ grafana_port | default('3000') }}/api/health"
+        status_code: 200
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 15
+      delay: 2
+
+    - name: Wait for Prometheus health
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ prometheus_port | default('9090') }}/-/healthy"
+        status_code: 200
+      register: prometheus_health
+      until: prometheus_health.status == 200
+      retries: 15
+      delay: 2
+
+    - name: Prune old images
+      community.docker.docker_prune:
+        images: true
+        images_filters:
+          dangling: false
+      register: prune_result
+
+  post_tasks:
+    - name: Container patching summary
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          CONTAINER PATCHING COMPLETE
+          =====================================================
+
+          Images pulled:
+          {% for result in image_pulls.results %}
+          {% if result.changed %}
+          - {{ result.item.key }}: Updated
+          {% else %}
+          - {{ result.item.key }}: No change
+          {% endif %}
+          {% endfor %}
+
+          Services restarted: {{ monitoring_restart.changed | ternary('Yes', 'No') }}
+          Old images removed: {{ prune_result.images | default(0) }}
+
+          Verify at: https://{{ domain }}:{{ grafana_port | default('3000') }}
+          Dashboard: Security Findings
+
+          =====================================================

@@ -1,0 +1,58 @@
+# Ansible Vault password files
+.vault_pass*
+vault_password*
+
+# Environment and SSH secrets
+.env*
+.ssh.env
+
+# Local overrides
+*.local.yml
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Keys and certificates
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+
+# Sensitive configuration files (use .example versions)
+inventory/hosts.yml
+inventory/production.yml
+inventory/staging.yml
+group_vars/all/vars.yml
+group_vars/all/vault.yml
+
+# Keep example files
+!inventory/hosts.yml.example
+!group_vars/all/vars.yml.example
+!group_vars/all/vault.yml.example
+
+# Internal tooling
+.planning/
+.agents/
+.ansible/
+.claude/
+scripts/
+bin/
+skills-lock.json
+INCIDENT_REPORT*
+
+# Runtime files
+*.retry
+*.log
+.tmp/
+
+# OS files
+.DS_Store
+Thumbs.db

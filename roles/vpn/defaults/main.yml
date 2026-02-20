@@ -1,0 +1,47 @@
+---
+# VPN panel configuration
+vpn_container_name: 3x-ui
+vpn_image: ghcr.io/mhsanaei/3x-ui@sha256:34c46ea6d838df981c4760bd1fe442413c2b99bbe4bb49dfa3d1bfb8a8a92496
+vpn_data_dir: /etc/x-ui
+vpn_panel_port: "2053"
+vpn_subscription_port: "2096"
+
+# Reference to SSL cert directory (set in ssl role)
+vpn_cert_dir: "{{ ssl_cert_dest_dir | default('/root/cert') }}"
+
+# Compose file location
+vpn_compose_dir: /opt/3x-ui
+
+# Admin credentials (should be overridden in vault)
+vpn_admin_username: admin
+vpn_admin_password: "{{ vault_vpn_admin_password }}"
+
+# Default VLESS Reality inbound settings
+# These settings are based on deployment experience and lessons learned:
+# 1. flow: "xtls-rprx-vision" is REQUIRED for Reality protocol
+# 2. acceptProxyProtocol must be false (enabling breaks connections)
+# 3. publicKey and fingerprint must be in subscription URL for clients
+vpn_inbound:
+  port: "25000"
+  protocol: vless
+  remark: "VPN"
+  flow: "xtls-rprx-vision"
+  security: "reality"
+  # Reality settings
+  reality_dest: "www.microsoft.com:443"
+  reality_server_names:
+    - "www.microsoft.com"
+  reality_fingerprint: "chrome"
+  # IMPORTANT: acceptProxyProtocol must be false for Reality to work
+  # Enabling this causes connection failures
+  accept_proxy_protocol: false
+
+# Initial inbound bootstrap configuration (idempotent)
+vpn_initial_inbound_enabled: true
+vpn_initial_inbound_port: "25000"
+vpn_initial_inbound_remark: "VPN-25000"
+vpn_initial_inbound_email: "client1@{{ domain }}"
+
+# Runtime config idempotency controls
+vpn_reconfigure_force: false
+vpn_config_state_file: "{{ vpn_data_dir }}/.ansible-vpn-config-state.json"

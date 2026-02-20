@@ -1,0 +1,46 @@
+---
+# SSH hardening tasks
+# Disables password authentication after verifying SSH key access works
+
+- name: Verify SSH key authentication works
+  ansible.builtin.command:
+    cmd: >
+      ssh -o BatchMode=yes -o ConnectTimeout=5 -o PasswordAuthentication=no
+      -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null
+      {{ hardening_ssh_test_user }}@{{ ansible_host }} echo "Key auth confirmed"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: ssh_key_test
+
+- name: Fail if SSH key authentication not working
+  ansible.builtin.fail:
+    msg: |
+      ================================================================
+      SSH KEY AUTHENTICATION FAILED
+      ================================================================
+
+      Cannot safely disable password authentication!
+
+      The SSH key test failed with return code: {{ ssh_key_test.rc }}
+      {% if ssh_key_test.stderr is defined and ssh_key_test.stderr %}
+      Error: {{ ssh_key_test.stderr }}
+      {% endif %}
+
+      TROUBLESHOOTING:
+      1. Ensure bootstrap.yml was run successfully
+      2. Verify SSH key was copied to the server
+      3. Test manually: ssh -o PasswordAuthentication=no {{ hardening_ssh_test_user }}@{{ ansible_host }}
+
+      ================================================================
+  when: ssh_key_test.rc != 0
+
+- name: Deploy SSH hardening drop-in configuration
+  ansible.builtin.template:
+    src: 99-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root
+    group: root
+    mode: '0644'
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: Restart SSH

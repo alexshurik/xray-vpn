@@ -1,0 +1,7 @@
+---
+# SSL certificate configuration
+ssl_cert_dest_dir: /root/cert
+ssl_apt_cache_valid_time: 3600
+ssl_renewal_dry_run: false
+ssl_grafana_cert_dest_dir: /opt/monitoring/certs
+ssl_grafana_cert_group: "472"

@@ -1,0 +1,91 @@
+---
+# CRITICAL: Order matters - SSH must be allowed BEFORE enabling UFW to prevent lockout
+
+- name: Install UFW
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ firewall_apt_cache_valid_time }}"
+
+- name: Allow SSH with rate limiting (prevent lockout)
+  community.general.ufw:
+    rule: limit
+    port: "{{ firewall_ssh_port }}"
+    proto: tcp
+    comment: "SSH with rate limiting"
+
+- name: Allow HTTP for Let's Encrypt
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+    comment: "HTTP for Lets Encrypt"
+
+- name: Allow HTTPS
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+    comment: "HTTPS"
+
+- name: Allow panel port for 3x-ui access
+  community.general.ufw:
+    rule: allow
+    port: "{{ vpn_panel_port }}"
+    proto: tcp
+    comment: "3x-ui VPN panel"
+
+- name: Allow subscription port for 3x-ui
+  community.general.ufw:
+    rule: allow
+    port: "{{ vpn_subscription_port }}"
+    proto: tcp
+    comment: "3x-ui subscription service"
+
+- name: Allow VPN inbound range for future clients
+  community.general.ufw:
+    rule: allow
+    port: "{{ vpn_inbound_port_range }}"
+    proto: tcp
+    comment: "VPN inbound range"
+
+- name: Allow Grafana when monitoring is enabled
+  community.general.ufw:
+    rule: allow
+    port: "{{ grafana_port }}"
+    proto: tcp
+    comment: "Grafana dashboard"
+  when: monitoring_enabled | default(false) | bool
+
+- name: Allow 3x-ui exporter when monitoring is enabled
+  community.general.ufw:
+    rule: allow
+    port: "{{ exporter_port }}"
+    proto: tcp
+    comment: "3x-ui exporter metrics"
+  when: monitoring_enabled | default(false) | bool
+
+- name: Set default incoming policy to deny
+  community.general.ufw:
+    default: deny
+    direction: incoming
+
+- name: Set default outgoing policy to allow
+  community.general.ufw:
+    default: allow
+    direction: outgoing
+
+- name: Enable UFW
+  community.general.ufw:
+    state: enabled
+    logging: "on"
+
+- name: Verify UFW status
+  ansible.builtin.command: ufw status verbose
+  register: ufw_status
+  changed_when: false
+
+- name: Display UFW status
+  ansible.builtin.debug:
+    var: ufw_status.stdout_lines

@@ -1,0 +1,67 @@
+---
+# Monitoring stack configuration
+# Prometheus + Grafana + 3x-ui-exporter for VPN observability
+
+# Monitoring directories
+monitoring_compose_dir: /opt/monitoring
+monitoring_data_dir: /var/lib/monitoring
+monitoring_deploy_stack: true
+monitoring_verify_stack: true
+# Security dashboard behavior:
+# - enable: ensure security dashboard is present
+# - disable: ensure security dashboard is absent
+# - preserve: do not change dashboard presence
+monitoring_security_dashboard_state: preserve
+# Backward compatibility knob (deprecated): true -> enable, false -> disable, null -> ignored
+monitoring_security_dashboard_enabled: null
+
+# Prometheus settings
+prometheus_port: "9090"
+prometheus_retention: "15d"
+prometheus_retention_size: "3GB"
+prometheus_data_dir: "{{ monitoring_data_dir }}/prometheus"
+
+# Loki settings
+loki_port: "3100"
+loki_image: grafana/loki@sha256:3c8fd3570dd9219951a60d3f919c7f31923d10baee578b77bc26c4a0b32d092d
+loki_data_dir: "{{ monitoring_data_dir }}/loki"
+loki_retention_enabled: true
+loki_retention_period: "120h"
+
+# Promtail settings
+promtail_port: "9080"
+promtail_image: grafana/promtail@sha256:51346af8682f7a664affaca4f34a62f5a4f0f83ace9931df94590375a94ff8f1
+promtail_positions_dir: "{{ monitoring_data_dir }}/promtail"
+security_logs_container_regex: "falco|tracee|trivy-runner|trivy-scheduler"
+security_falco_priority_regex: "Warning|Error|Critical|Alert|Emergency"
+security_falco_ignore_rule_regex: "Read sensitive file untrusted"
+security_tracee_event_regex: >-
+  stdio_over_socket|proc_mem_code_injection|docker_abuse|fileless_execution|illegitimate_shell|ptrace_code_injection|process_vm_write_inject|dynamic_code_loading|syscall_hooking|proc_fops_hooking|ld_preload|sudoers_modification|cgroup_release_agent|core_pattern_modification|kernel_module_loading|scheduled_task_mod|disk_mount|anti_debugging|proc_mem_access|k8s_api_connection|k8s_cert_theft|hidden_file_created|rcd_modification
+security_tracee_ignore_process_regex: >-
+  docker|dockerd|docker-compose|containerd|containerd-shim|runc|python|python3[.][0-9]+|sh|bash|sudo|sshd|ufw|iptables|ip6tables|wget|promtail|loki|grafana|prometheus|node-exporter|x-ui|sleep|sysctl|kworker|systemd|systemd-resolve|ansible|tracee
+
+# Grafana settings
+grafana_port: "3000"
+grafana_data_dir: "{{ monitoring_data_dir }}/grafana"
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+grafana_https_enabled: true
+grafana_cert_dir: "{{ monitoring_compose_dir }}/certs"
+grafana_tls_cert_file: "{{ grafana_cert_dir }}/fullchain.pem"
+grafana_tls_key_file: "{{ grafana_cert_dir }}/privkey.pem"
+
+# 3x-ui-exporter settings
+# Note: Avoided 9100 (standard node-exporter port)
+exporter_port: "9811"
+exporter_image: ksusonic/3x-ui-exporter@sha256:471dcffca046aec51bdf9ffcb21e314f99a5254c178d8687c01d3f6b195a13f1
+exporter_update_interval: "30"
+
+# Network bandwidth limit (Mbps) - used for bandwidth usage percentage calculations
+# Override in your inventory if your server has different bandwidth
+# Measure with: speedtest-cli --simple
+network_bandwidth_mbps: 1000
+
+# 3x-ui panel connection (uses existing vault credentials)
+exporter_panel_url: "https://127.0.0.1:{{ vpn_panel_port | default('2053') }}"
+exporter_panel_username: "{{ vpn_admin_username | default('admin') }}"
+exporter_panel_password: "{{ vault_vpn_admin_password }}"

@@ -1,0 +1,25 @@
+---
+# Variable indirection pattern - references vault-protected values
+# Actual secrets are in vault.yml (encrypted)
+
+# SSH configuration
+ssh_key_type: ed25519
+ssh_key_comment: "vpn-deployment-key"
+
+# Reference to vault-protected password (used only during bootstrap)
+ssh_password: "{{ '{{' }} vault_ssh_password {{ '}}' }}"
+
+# Domain and email (set by setup playbook)
+domain: "{{ domain }}"
+email: "{{ email }}"
+
+# VPN panel credentials
+vpn_admin_username: admin
+vpn_admin_password: "{{ '{{' }} vault_vpn_admin_password {{ '}}' }}"
+
+# Monitoring stack deployment toggle for playbooks/deploy.yml
+monitoring_enabled: false
+
+# Security monitoring toggle for playbooks/deploy.yml
+# Requires monitoring_enabled=true
+security_monitoring_enabled: false

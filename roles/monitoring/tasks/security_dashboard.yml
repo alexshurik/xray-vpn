@@ -1,0 +1,41 @@
+---
+- name: Ensure Grafana dashboards directory exists
+  ansible.builtin.file:
+    path: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Check Grafana container status
+  community.docker.docker_container_info:
+    name: grafana
+  register: monitoring_security_grafana_info
+
+- name: Assert Grafana is running before security dashboard deployment
+  ansible.builtin.assert:
+    that:
+      - monitoring_security_grafana_info.container is defined
+      - monitoring_security_grafana_info.container.State.Running
+    fail_msg: >
+      Grafana container is not running. Deploy monitoring first:
+      ansible-playbook playbooks/deploy-monitoring.yml --ask-vault-pass
+    success_msg: Grafana is running, applying Security Findings dashboard.
+
+- name: Deploy unified Security dashboard (templated)
+  ansible.builtin.template:
+    src: security-findings.json.j2
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/security-findings.json"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: restart grafana
+
+- name: Remove legacy security dashboards
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/trivy-security.json"
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/security-events.json"
+  notify: restart grafana

@@ -1,0 +1,26 @@
+# /etc/fail2ban/jail.local
+# Ansible managed - do not edit manually
+# Source: https://www.digitalocean.com/community/tutorials/how-to-protect-ssh-with-fail2ban-on-ubuntu-20-04
+
+[DEFAULT]
+# Ban IPs for configured duration (default: 1 hour)
+bantime = {{ fail2ban_bantime }}
+
+# Find failures within this window (default: 10 minutes)
+findtime = {{ fail2ban_findtime }}
+
+# Ban after this many failures (default: 5)
+maxretry = {{ fail2ban_maxretry }}
+
+# IPs to never ban
+ignoreip = 127.0.0.1/8 ::1
+
+# Use iptables for banning
+banaction = iptables-multiport
+
+[sshd]
+enabled = true
+port = {{ ssh_port }}
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = {{ fail2ban_maxretry }}

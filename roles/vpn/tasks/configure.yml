@@ -1,0 +1,69 @@
+---
+# 3x-ui SSL and credential configuration via CLI
+# Source: https://github.com/MHSanaei/3x-ui/blob/main/x-ui.sh
+#
+# IMPORTANT: These commands must run AFTER container is ready (deploy.yml waits for this)
+# The x-ui binary is at /app/x-ui in the Docker container
+
+- name: Configure SSL certificate paths
+  community.docker.docker_container_exec:
+    container: "{{ vpn_container_name }}"
+    argv:
+      - /app/x-ui
+      - cert
+      - -webCert
+      - /root/cert/fullchain.pem
+      - -webCertKey
+      - /root/cert/privkey.pem
+  register: ssl_config_result
+
+- name: Display SSL configuration result
+  ansible.builtin.debug:
+    msg: "SSL config: {{ ssl_config_result.stdout | default('configured') }}"
+
+- name: Change admin credentials
+  community.docker.docker_container_exec:
+    container: "{{ vpn_container_name }}"
+    argv:
+      - /app/x-ui
+      - setting
+      - -username
+      - "{{ vpn_admin_username }}"
+      - -password
+      - "{{ vpn_admin_password }}"
+  register: credential_result
+  no_log: true  # Don't log password
+
+- name: Display credential change result
+  ansible.builtin.debug:
+    msg: "Credentials updated for user: {{ vpn_admin_username }}"
+
+- name: Restart container to apply SSL configuration
+  community.docker.docker_container:
+    name: "{{ vpn_container_name }}"
+    state: started
+    restart: true
+  register: restart_result
+
+- name: Wait for panel to restart with SSL
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}"
+    method: GET
+    status_code: [200, 302]
+    validate_certs: false  # Self-signed check on localhost
+  register: panel_ssl_ready
+  until: panel_ssl_ready.status in [200, 302]
+  retries: 30
+  delay: 2
+
+- name: Persist applied VPN runtime configuration fingerprint
+  ansible.builtin.copy:
+    dest: "{{ vpn_config_state_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      {
+        "config_fingerprint": "{{ vpn_desired_config_fingerprint }}"
+      }
+  no_log: true

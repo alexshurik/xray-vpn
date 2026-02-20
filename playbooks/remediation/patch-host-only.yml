@@ -1,0 +1,120 @@
+---
+# Host-only Security Patching
+# Updates system packages without touching Docker containers
+# Use this for: kernel updates, OpenSSL patches, critical system CVEs
+#
+# Usage:
+#   ansible-playbook playbooks/remediation/patch-host-only.yml --ask-vault-pass
+
+- name: Patch Host System Packages Only
+  hosts: vpn_servers
+  become: true
+
+  vars:
+    # Critical packages with known CVEs - prioritized for update
+    critical_packages:
+      - zlib1g
+      - zlib1g-dev
+      - python3-yaml
+      - python3
+      - python3-pip
+      - openssl
+      - libssl3
+      - libssl-dev
+      - linux-headers-generic
+      - linux-headers-$(uname -r)
+      - apt
+      - systemd
+      - openssh-server
+
+    # Services to restart after library updates
+    services_to_restart:
+      - ssh
+      - systemd-resolved
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Display host patch plan
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          HOST-ONLY SECURITY PATCHING
+          =====================================================
+          Target: {{ ansible_host }}
+
+          Packages to update:
+          {% for pkg in critical_packages %}
+          - {{ pkg }}
+          {% endfor %}
+
+          Note: Docker containers will NOT be restarted
+          Services to restart: {{ services_to_restart | join(', ') }}
+          =====================================================
+
+  tasks:
+    - name: Update package cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Check currently installed versions
+      ansible.builtin.shell: |
+        dpkg-query -W -f='${Package} ${Version}\n' {{ critical_packages | join(' ') }} 2>/dev/null || true
+      changed_when: false
+      register: before_versions
+
+    - name: Display versions before update
+      ansible.builtin.debug:
+        var: before_versions.stdout_lines
+
+    - name: Upgrade critical packages
+      ansible.builtin.apt:
+        name: "{{ critical_packages }}"
+        state: latest
+        only_upgrade: true
+      register: package_upgrade
+
+    - name: Check for kernel updates (needs reboot)
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Restart affected services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: restarted
+      loop: "{{ services_to_restart }}"
+      when: package_upgrade.changed
+
+    - name: Check versions after update
+      ansible.builtin.shell: |
+        dpkg-query -W -f='${Package} ${Version}\n' {{ critical_packages | join(' ') }} 2>/dev/null || true
+      changed_when: false
+      register: after_versions
+
+    - name: Display versions after update
+      ansible.builtin.debug:
+        var: after_versions.stdout_lines
+
+  post_tasks:
+    - name: Host patching summary
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          HOST PATCHING COMPLETE
+          =====================================================
+
+          Packages updated: {{ package_upgrade.changed | ternary('Yes', 'No changes') }}
+          Reboot required: {{ reboot_required.stat.exists | ternary('YES - Schedule reboot!', 'No') }}
+
+          {% if reboot_required.stat.exists %}
+          WARNING: Kernel or critical system libraries updated.
+          Schedule maintenance window for reboot.
+
+          To reboot:
+            ssh {{ ansible_user }}@{{ ansible_host }} 'sudo reboot'
+          {% endif %}
+
+          =====================================================

@@ -1,0 +1,29 @@
+---
+# Docker edition to install
+docker_edition: ce
+
+# Docker packages to install
+docker_packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+
+# Old packages to remove (conflicts with Docker CE)
+docker_old_packages:
+  - docker
+  - docker.io
+  - docker-doc
+  - docker-compose
+  - docker-compose-v2
+  - podman-docker
+  - containerd
+  - runc
+
+# Daemon configuration
+docker_log_max_size: "10m"
+docker_log_max_file: "3"
+
+# apt cache validity
+docker_apt_cache_valid_time: 3600

@@ -1,0 +1,89 @@
+---
+# 3x-ui container deployment via Docker Compose v2
+# Source: https://docs.ansible.com/collections/community/docker/docker_compose_v2_module.html
+
+- name: Create compose directory
+  ansible.builtin.file:
+    path: "{{ vpn_compose_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create data directory
+  ansible.builtin.file:
+    path: "{{ vpn_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ vpn_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  register: compose_template
+
+- name: Start 3x-ui container
+  community.docker.docker_compose_v2:
+    project_src: "{{ vpn_compose_dir }}"
+    state: present
+    pull: missing
+  register: compose_result
+
+- name: Display deployment result
+  ansible.builtin.debug:
+    msg: "3x-ui container {{ 'started' if compose_result.changed else 'already running' }}"
+
+- name: Wait for 3x-ui to initialize over HTTP
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ vpn_panel_port }}/"
+    method: GET
+    status_code: [200, 302, 404]
+  register: vpn_panel_ready_http
+  until: (vpn_panel_ready_http.status | default(0) | int) in [200, 302, 404]
+  retries: 30
+  delay: 2
+  changed_when: false
+  failed_when: false
+
+- name: Wait for 3x-ui to initialize over HTTPS (fallback)
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}/"
+    method: GET
+    status_code: [200, 302, 400, 404]
+    validate_certs: false
+  register: vpn_panel_ready_https
+  until: (vpn_panel_ready_https.status | default(0) | int) in [200, 302, 400, 404]
+  retries: 30
+  delay: 2
+  changed_when: false
+  failed_when: false
+  when: (vpn_panel_ready_http.status | default(0) | int) not in [200, 302, 404]
+
+- name: Assert 3x-ui panel is reachable
+  ansible.builtin.assert:
+    that:
+      - >-
+        (vpn_panel_ready_http.status | default(0) | int) in [200, 302, 404]
+        or
+        (vpn_panel_ready_https.status | default(0) | int) in [200, 302, 400, 404]
+    fail_msg: "3x-ui panel did not become reachable on http/https localhost endpoint."
+    success_msg: "3x-ui panel is reachable."
+
+- name: Verify container is running
+  community.docker.docker_container_info:
+    name: "{{ vpn_container_name }}"
+  register: container_info
+
+- name: Assert container state
+  ansible.builtin.assert:
+    that:
+      - container_info.container.State.Running
+      - container_info.container.HostConfig.NetworkMode == 'host'
+      - container_info.container.HostConfig.RestartPolicy.Name == 'unless-stopped'
+    fail_msg: "Container not in expected state"
+    success_msg: "3x-ui container running with correct configuration"

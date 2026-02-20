@@ -1,0 +1,15 @@
+---
+# Firewall configuration
+firewall_ssh_port: 22
+firewall_apt_cache_valid_time: 3600
+
+# VPN ports (configured dynamically)
+# These are set by the vpn role but have defaults here
+# Critical: Panel + subscription ports + inbound range must be open
+vpn_panel_port: "2053"        # 3x-ui web panel port
+vpn_subscription_port: "2096" # Subscription service port (REQUIRED for client configs)
+vpn_inbound_port_range: "25000:25100"  # Reserved range for additional inbounds
+
+# Monitoring ports (opened only when monitoring_enabled=true)
+grafana_port: "3000"
+exporter_port: "9811"

@@ -1,0 +1,12 @@
+---
+# SSH hardening settings
+ssh_port: 22
+hardening_ssh_test_user: "{{ vpn_system_user | default(ansible_user) }}"
+
+# Fail2ban settings (for 06-02)
+fail2ban_bantime: 3600
+fail2ban_findtime: 600
+fail2ban_maxretry: 5
+
+# Watchtower settings (for 06-03)
+watchtower_poll_interval: 86400

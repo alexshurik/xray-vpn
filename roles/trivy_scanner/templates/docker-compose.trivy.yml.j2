@@ -1,0 +1,31 @@
+services:
+  trivy-runner:
+    build:
+      context: {{ trivy_compose_dir }}
+      dockerfile: Dockerfile.trivy-runner
+    image: {{ trivy_runner_image }}
+    container_name: {{ trivy_runner_container_name }}
+    command: ["sleep", "infinity"]
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - {{ trivy_reports_dir }}:{{ trivy_reports_dir }}
+      - {{ trivy_cache_dir }}:{{ trivy_cache_dir }}
+      - {{ trivy_metrics_dir }}:{{ trivy_metrics_dir }}
+      - {{ trivy_log_dir }}:{{ trivy_log_dir }}
+      - {{ trivy_work_dir }}/run-trivy-scan.py:{{ trivy_work_dir }}/run-trivy-scan.py:ro
+    labels:
+      ofelia.enabled: "true"
+      ofelia.job-exec.trivy-scan.schedule: "{{ trivy_ofelia_schedule }}"
+      ofelia.job-exec.trivy-scan.command: "python3 {{ trivy_work_dir }}/run-trivy-scan.py"
+      ofelia.job-exec.trivy-scan.no-overlap: "true"
+
+  trivy-scheduler:
+    image: {{ trivy_ofelia_image }}
+    container_name: {{ trivy_scheduler_container_name }}
+    command: daemon --docker
+    restart: unless-stopped
+    depends_on:
+      - trivy-runner
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

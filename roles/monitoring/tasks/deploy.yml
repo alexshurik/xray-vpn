@@ -1,0 +1,220 @@
+---
+# Deploy Prometheus + Grafana + 3x-ui-exporter stack
+
+- name: Create monitoring directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - "{{ monitoring_compose_dir }}"
+    - "{{ monitoring_data_dir }}"
+
+# Prometheus runs as 'nobody' user (UID 65534) in container
+- name: Create Prometheus data directory with correct permissions
+  ansible.builtin.file:
+    path: "{{ prometheus_data_dir }}"
+    state: directory
+    owner: "65534"
+    group: "65534"
+    mode: '0750'
+
+- name: Create Loki data directory
+  ansible.builtin.file:
+    path: "{{ loki_data_dir }}"
+    state: directory
+    owner: "10001"
+    group: "10001"
+    mode: '0750'
+
+# Promtail needs writable positions file
+- name: Create Promtail positions directory
+  ansible.builtin.file:
+    path: "{{ promtail_positions_dir }}"
+    state: directory
+    owner: "0"
+    group: "0"
+    mode: '0755'
+
+# Grafana container runs as user 'grafana' with UID/GID 472
+# See: https://grafana.com/docs/grafana/latest/setup-grafana/installation/docker/#migrate-to-v10-or-later
+- name: Create Grafana data directory
+  ansible.builtin.file:
+    path: "{{ grafana_data_dir }}"
+    state: directory
+    owner: "472"
+    group: "472"
+    mode: '0750'
+
+- name: Check TLS fullchain for Grafana
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ domain }}/fullchain.pem"
+  register: grafana_tls_fullchain_stat
+  when: grafana_https_enabled | bool
+
+- name: Check TLS private key for Grafana
+  ansible.builtin.stat:
+    path: "/etc/letsencrypt/live/{{ domain }}/privkey.pem"
+  register: grafana_tls_privkey_stat
+  when: grafana_https_enabled | bool
+
+- name: Assert TLS files exist for Grafana HTTPS
+  ansible.builtin.assert:
+    that:
+      - grafana_tls_fullchain_stat.stat.exists
+      - grafana_tls_privkey_stat.stat.exists
+    fail_msg: >
+      Grafana HTTPS requires Let's Encrypt cert files for {{ domain }}.
+      Run VPN/SSL deployment first: ansible-playbook playbooks/deploy.yml --ask-vault-pass
+    success_msg: Grafana TLS certificate files are present.
+  when: grafana_https_enabled | bool
+
+- name: Create Grafana TLS cert directory
+  ansible.builtin.file:
+    path: "{{ grafana_cert_dir }}"
+    state: directory
+    owner: root
+    group: "472"
+    mode: '0750'
+  when: grafana_https_enabled | bool
+
+- name: Copy fullchain certificate for Grafana
+  ansible.builtin.copy:
+    src: "/etc/letsencrypt/live/{{ domain }}/fullchain.pem"
+    dest: "{{ grafana_tls_cert_file }}"
+    remote_src: true
+    owner: root
+    group: "472"
+    mode: '0640'
+  when: grafana_https_enabled | bool
+  notify: restart grafana
+
+- name: Copy private key for Grafana
+  ansible.builtin.copy:
+    src: "/etc/letsencrypt/live/{{ domain }}/privkey.pem"
+    dest: "{{ grafana_tls_key_file }}"
+    remote_src: true
+    owner: root
+    group: "472"
+    mode: '0640'
+  when: grafana_https_enabled | bool
+  notify: restart grafana
+
+- name: Create node-exporter textfile collector directory
+  ansible.builtin.file:
+    path: /var/lib/node_exporter/textfile_collector
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy monitoring docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.monitoring.yml.j2
+    dest: "{{ monitoring_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  register: monitoring_compose_template
+  notify: restart monitoring stack
+
+- name: Deploy Prometheus configuration
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_compose_dir }}/prometheus.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  register: prometheus_config_template
+  notify: restart prometheus
+
+- name: Deploy Loki configuration
+  ansible.builtin.template:
+    src: loki-config.yml.j2
+    dest: "{{ monitoring_compose_dir }}/loki-config.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart monitoring stack
+
+- name: Deploy Promtail configuration
+  ansible.builtin.template:
+    src: promtail-config.yml.j2
+    dest: "{{ monitoring_compose_dir }}/promtail-config.yml"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart monitoring stack
+
+- name: Create Grafana provisioning directories
+  ansible.builtin.file:
+    path: "{{ monitoring_compose_dir }}/grafana/provisioning/datasources"
+    state: directory
+    owner: "{{ ansible_user_uid | default('0') }}"
+    group: "{{ ansible_user_gid | default('0') }}"
+    mode: '0755'
+
+- name: Deploy Grafana datasource configuration
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/datasources/prometheus.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Create Grafana dashboards provisioning directory
+  ansible.builtin.file:
+    path: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy Grafana dashboard provider configuration
+  ansible.builtin.template:
+    src: grafana-dashboard-provider.yml.j2
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/dashboard.yml"
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Deploy 3X-UI dashboards
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/{{ item | basename }}"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - 3x-ui-dashboard.json
+    - 3x-ui-daily-usage.json
+    - 3x-ui-system-health.json
+    - 3x-ui-vpn-detailed.json
+    - node-exporter-full.json
+  notify: restart grafana
+
+- name: Deploy Network Bandwidth dashboard (templated)
+  ansible.builtin.template:
+    src: network-bandwidth.json.j2
+    dest: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/network-bandwidth.json"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart grafana
+
+- name: Start monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: missing
+  register: monitoring_compose_result
+
+- name: Display deployment result
+  ansible.builtin.debug:
+    msg: |
+      Monitoring stack {{ 'started' if monitoring_compose_result.changed else 'already running' }}
+      - Grafana: {{ 'https' if (grafana_https_enabled | bool) else 'http' }}://{{ ansible_host }}:{{ grafana_port }}
+      - Prometheus: http://127.0.0.1:{{ prometheus_port }} (localhost only)
+      - Loki: http://127.0.0.1:{{ loki_port }} (localhost only)

@@ -1,0 +1,28 @@
+---
+- name: Restart Prometheus
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: missing
+    recreate: always
+    services:
+      - prometheus
+  listen: "restart prometheus"
+
+- name: Restart Grafana
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: missing
+    recreate: always
+    services:
+      - grafana
+  listen: "restart grafana"
+
+- name: Restart monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_compose_dir }}"
+    state: present
+    pull: missing
+    recreate: always
+  listen: "restart monitoring stack"

@@ -1,0 +1,118 @@
+---
+- name: Ensure Trivy directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ trivy_compose_dir }}"
+    - "{{ trivy_work_dir }}"
+    - "{{ trivy_reports_dir }}"
+    - "{{ trivy_cache_dir }}"
+    - "{{ trivy_metrics_dir }}"
+    - "{{ trivy_log_dir }}"
+  when: trivy_enabled | bool
+
+- name: Remove legacy Trivy shell runner script
+  ansible.builtin.file:
+    path: "{{ trivy_work_dir }}/run-trivy-scan.sh"
+    state: absent
+  when: trivy_enabled | bool
+
+- name: Deploy Trivy scan runner script
+  ansible.builtin.template:
+    src: run-trivy-scan.py.j2
+    dest: "{{ trivy_work_dir }}/run-trivy-scan.py"
+    owner: root
+    group: root
+    mode: "0755"
+  register: trivy_script_template
+  when: trivy_enabled | bool
+
+- name: Deploy Trivy runner Dockerfile
+  ansible.builtin.template:
+    src: Dockerfile.trivy-runner.j2
+    dest: "{{ trivy_compose_dir }}/Dockerfile.trivy-runner"
+    owner: root
+    group: root
+    mode: "0644"
+  register: trivy_runner_dockerfile_template
+  when: trivy_enabled | bool
+
+- name: Configure log rotation for Trivy scan log
+  ansible.builtin.template:
+    src: trivy-scan.logrotate.j2
+    dest: /etc/logrotate.d/trivy-scan
+    owner: root
+    group: root
+    mode: "0644"
+  when:
+    - trivy_enabled | bool
+    - trivy_logrotate_enabled | bool
+
+- name: Deploy Trivy docker-compose.yml
+  ansible.builtin.template:
+    src: docker-compose.trivy.yml.j2
+    dest: "{{ trivy_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  register: trivy_compose_template
+  when: trivy_enabled | bool
+
+- name: Recreate Trivy runner when script or compose changed
+  community.docker.docker_compose_v2:
+    project_src: "{{ trivy_compose_dir }}"
+    state: present
+    pull: missing
+    build: always
+    recreate: always
+    services:
+      - "{{ trivy_runner_container_name }}"
+      - "{{ trivy_scheduler_container_name }}"
+  when:
+    - trivy_enabled | bool
+    - trivy_script_template.changed or trivy_compose_template.changed or trivy_runner_dockerfile_template.changed
+
+- name: Ensure Trivy scanner stack is running
+  community.docker.docker_compose_v2:
+    project_src: "{{ trivy_compose_dir }}"
+    state: present
+    pull: missing
+  register: trivy_compose_result
+  when: trivy_enabled | bool
+
+- name: Verify Trivy metrics file exists before initial scan
+  ansible.builtin.stat:
+    path: "{{ trivy_metrics_dir }}/trivy.prom"
+  register: trivy_metrics_file_before
+  when: trivy_enabled | bool
+
+- name: Run initial Trivy scan once
+  ansible.builtin.command: >
+    docker exec {{ trivy_runner_container_name }}
+    python3 {{ trivy_work_dir }}/run-trivy-scan.py
+  register: trivy_initial_scan
+  changed_when: trivy_initial_scan.rc == 0
+  when:
+    - trivy_enabled | bool
+    - trivy_run_initial_scan | bool
+    - not trivy_metrics_file_before.stat.exists
+
+- name: Verify Trivy metrics file exists
+  ansible.builtin.stat:
+    path: "{{ trivy_metrics_dir }}/trivy.prom"
+  register: trivy_metrics_file
+  when: trivy_enabled | bool
+
+- name: Assert Trivy metrics file created
+  ansible.builtin.assert:
+    that:
+      - trivy_metrics_file.stat.exists
+    fail_msg: "Trivy metrics file was not created."
+    success_msg: "Trivy scan is configured and metrics file is present."
+  when:
+    - trivy_enabled | bool
+    - trivy_run_initial_scan | bool or trivy_metrics_file_before.stat.exists

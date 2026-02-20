@@ -1,0 +1,7 @@
+// /etc/apt/apt.conf.d/20auto-upgrades
+// Ansible managed - do not edit manually
+// Source: https://documentation.ubuntu.com/server/how-to/software/automatic-updates/
+
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+APT::Periodic::AutocleanInterval "7";

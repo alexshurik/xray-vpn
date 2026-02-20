@@ -1,0 +1,38 @@
+---
+# Certbot installation via snap (official method since Dec 2020)
+# Source: https://certbot.eff.org/instructions
+
+- name: Install snapd
+  ansible.builtin.apt:
+    name: snapd
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ ssl_apt_cache_valid_time }}"
+
+- name: Ensure snapd service is running
+  ansible.builtin.systemd_service:
+    name: snapd.socket
+    enabled: true
+    state: started
+
+- name: Install snap core (required for classic snaps)
+  community.general.snap:
+    name: core
+    state: present
+
+- name: Remove apt certbot if present (conflict prevention)
+  ansible.builtin.apt:
+    name: certbot
+    state: absent
+
+- name: Install certbot via snap
+  community.general.snap:
+    name: certbot
+    classic: true
+    state: present
+
+- name: Create certbot command symlink
+  ansible.builtin.file:
+    src: /snap/bin/certbot
+    dest: /usr/bin/certbot
+    state: link

@@ -1,0 +1,26 @@
+---
+trivy_enabled: true
+trivy_image: aquasec/trivy@sha256:bcc376de8d77cfe086a917230e818dc9f8528e3c852f7b1aff648949b6258d1c
+trivy_runner_base_image: docker:27-cli
+trivy_runner_image: trivy-runner:local
+trivy_ofelia_image: mcuadros/ofelia@sha256:f6325d43543b27ff55f527b9a6fd2700da16d8ae56ec838ce3612d3c412ae1ef
+trivy_ofelia_schedule: "0 20 3 * * *"
+trivy_retention_days: 5
+trivy_compress_after_days: 0
+trivy_reports_max_size_mb: 3072
+trivy_severity: "UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL"
+trivy_emit_detailed_findings: false
+trivy_logrotate_enabled: true
+trivy_logrotate_rotate: 5
+trivy_logrotate_maxsize: "20M"
+trivy_run_initial_scan: false
+
+trivy_reports_dir: /var/lib/trivy/reports
+trivy_cache_dir: /var/lib/trivy/cache
+trivy_log_dir: /var/lib/trivy/logs
+trivy_log_file: "{{ trivy_log_dir }}/trivy-scan.log"
+trivy_metrics_dir: /var/lib/node_exporter/textfile_collector
+trivy_work_dir: /opt/trivy
+trivy_compose_dir: /opt/trivy
+trivy_runner_container_name: trivy-runner
+trivy_scheduler_container_name: trivy-scheduler

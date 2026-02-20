@@ -1,0 +1,101 @@
+---
+- name: "Pre-flight: Verify dig is available on control node"
+  ansible.builtin.command: "command -v dig"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: preflight_dig_check
+  failed_when: preflight_dig_check.rc != 0
+
+- name: "Pre-flight: Resolve domain DNS"
+  ansible.builtin.command: "dig +short {{ domain }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: preflight_dns_lookup
+
+- name: "Pre-flight: Extract A-record IP"
+  ansible.builtin.set_fact:
+    preflight_dns_resolved_ip: "{{ (preflight_dns_lookup.stdout_lines | default([]) | first | default('')) | trim }}"
+
+- name: "Pre-flight: Resolve target host IP"
+  ansible.builtin.command: "dig +short {{ ansible_host }}"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  register: preflight_target_host_lookup
+
+- name: "Pre-flight: Extract target host IP"
+  ansible.builtin.set_fact:
+    preflight_target_host_ip: "{{ (preflight_target_host_lookup.stdout_lines | default([]) | first | default(ansible_host)) | trim }}"
+
+- name: "Pre-flight: Verify domain points to VPS IP"
+  ansible.builtin.assert:
+    that:
+      - preflight_dns_resolved_ip == preflight_target_host_ip
+    fail_msg: |
+      ================================================================
+      PRE-FLIGHT CHECK FAILED: DNS Resolution
+      ================================================================
+
+      Domain: {{ domain }}
+      Resolved to: {{ preflight_dns_resolved_ip | default('NXDOMAIN') }}
+      Expected: {{ preflight_target_host_ip }}
+
+      ACTION REQUIRED:
+      1. Create/update A record: {{ domain }} -> {{ ansible_host }}
+      2. Wait for DNS propagation (usually 5-30 minutes)
+      3. Verify with: dig {{ domain }} +short
+      ================================================================
+    success_msg: "DNS OK: {{ domain }} -> {{ preflight_target_host_ip }}"
+
+- name: "Pre-flight: Check HTTP port accessibility"
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 80
+    timeout: 5
+    state: started
+  delegate_to: localhost
+  become: false
+  register: preflight_http_port_check
+  ignore_errors: true
+
+- name: "Pre-flight: Check HTTPS port accessibility"
+  ansible.builtin.wait_for:
+    host: "{{ ansible_host }}"
+    port: 443
+    timeout: 5
+    state: started
+  delegate_to: localhost
+  become: false
+  register: preflight_https_port_check
+  ignore_errors: true
+
+- name: "Pre-flight: Fail if ports are not accessible"
+  ansible.builtin.fail:
+    msg: |
+      ================================================================
+      PRE-FLIGHT CHECK FAILED: Port Accessibility
+      ================================================================
+
+      VPS IP: {{ ansible_host }}
+      Port 80 (HTTP): {{ 'OPEN' if not preflight_http_port_check.failed else 'BLOCKED' }}
+      Port 443 (HTTPS): {{ 'OPEN' if not preflight_https_port_check.failed else 'BLOCKED' }}
+
+      ACTION REQUIRED:
+      1. Ensure cloud firewall/security group allows TCP 80/443
+      2. Ensure host firewall keeps 80/443 open
+      3. Retry deployment after firewall fix
+      ================================================================
+  when: preflight_http_port_check.failed or preflight_https_port_check.failed
+
+- name: "Pre-flight: All checks passed"
+  ansible.builtin.debug:
+    msg: |
+      ================================================
+      PRE-FLIGHT CHECKS PASSED
+      ================================================
+      DNS: {{ domain }} -> {{ ansible_host }}
+      Port 80: OPEN
+      Port 443: OPEN
+      ================================================

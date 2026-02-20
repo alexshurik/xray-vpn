@@ -1,0 +1,29 @@
+// /etc/apt/apt.conf.d/50unattended-upgrades
+// Ansible managed - do not edit manually
+// Source: https://documentation.ubuntu.com/server/how-to/software/automatic-updates/
+
+// Allowed-Origins: Security updates ONLY (not -updates or -backports)
+// This ensures stability while getting critical security patches
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}";
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Package blacklist (none - allow all security updates)
+Unattended-Upgrade::Package-Blacklist {
+};
+
+// Do not enable automatic upgrades to development releases
+Unattended-Upgrade::DevRelease "false";
+
+// Remove unused kernel packages after update
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+
+// Remove new unused dependencies
+Unattended-Upgrade::Remove-New-Unused-Dependencies "true";
+
+// CRITICAL: Do NOT auto-reboot - VPN availability is critical
+// Server admin should schedule manual reboots when kernel updates pending
+Unattended-Upgrade::Automatic-Reboot "false";

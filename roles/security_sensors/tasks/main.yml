@@ -1,0 +1,50 @@
+---
+- name: Create security sensors directory
+  ansible.builtin.file:
+    path: "{{ security_sensors_compose_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Deploy Falco + Tracee docker compose
+  ansible.builtin.template:
+    src: docker-compose.security.yml.j2
+    dest: "{{ security_sensors_compose_dir }}/docker-compose.yml"
+    owner: root
+    group: root
+    mode: "0644"
+  when: security_sensors_enabled | bool
+
+- name: Start security sensors stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ security_sensors_compose_dir }}"
+    state: present
+    pull: missing
+  when: security_sensors_enabled | bool
+  register: security_sensors_compose
+
+- name: Get Falco container status
+  community.docker.docker_container_info:
+    name: falco
+  register: falco_info
+  when:
+    - security_sensors_enabled | bool
+    - falco_enabled | bool
+
+- name: Get Tracee container status
+  community.docker.docker_container_info:
+    name: tracee
+  register: tracee_info
+  when:
+    - security_sensors_enabled | bool
+    - tracee_enabled | bool
+
+- name: Assert Falco/Tracee are running
+  ansible.builtin.assert:
+    that:
+      - not falco_enabled or (falco_info.container is defined and falco_info.container.State.Running)
+      - not tracee_enabled or (tracee_info.container is defined and tracee_info.container.State.Running)
+    fail_msg: "Falco or Tracee container is not running."
+    success_msg: "Falco and Tracee are running."
+  when: security_sensors_enabled | bool

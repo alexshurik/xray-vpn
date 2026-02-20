@@ -1,0 +1,23 @@
+---
+# 3x-ui VPN Panel Docker Compose
+# Source: https://github.com/MHSanaei/3x-ui/blob/main/docker-compose.yml
+#
+# network_mode: host - Container uses host network directly (required for VPN)
+# restart: unless-stopped - Survives reboot, can be manually stopped
+# Volumes:
+#   - /etc/x-ui/ - Panel database and configuration
+#   - /root/cert/ - SSL certificates from Let's Encrypt
+
+services:
+  3x-ui:
+    image: {{ vpn_image }}
+    container_name: {{ vpn_container_name }}
+    volumes:
+      - {{ vpn_data_dir }}:/etc/x-ui/
+      - {{ vpn_cert_dir }}:/root/cert/:ro
+    environment:
+      XRAY_VMESS_AEAD_FORCED: "false"
+      XUI_ENABLE_FAIL2BAN: "true"
+    tty: true
+    network_mode: host
+    restart: unless-stopped

@@ -1,0 +1,15 @@
+---
+- name: Remove security dashboard when security monitoring is disabled
+  ansible.builtin.file:
+    path: "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/security-findings.json"
+    state: absent
+  notify: restart grafana
+
+- name: Remove legacy security dashboards
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/trivy-security.json"
+    - "{{ monitoring_compose_dir }}/grafana/provisioning/dashboards/security-events.json"
+  notify: restart grafana

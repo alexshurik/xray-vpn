@@ -1,0 +1,44 @@
+---
+# Watchtower container deployment for automatic Docker updates
+# Source: https://containrrr.dev/watchtower/
+
+- name: Create Watchtower directory
+  ansible.builtin.file:
+    path: /opt/watchtower
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Deploy Watchtower Docker Compose file
+  ansible.builtin.template:
+    src: watchtower-compose.yml.j2
+    dest: /opt/watchtower/docker-compose.yml
+    owner: root
+    group: root
+    mode: '0644'
+  register: watchtower_compose
+
+- name: Start Watchtower container
+  community.docker.docker_compose_v2:
+    project_src: /opt/watchtower
+    state: present
+    pull: missing
+  register: watchtower_result
+
+- name: Display Watchtower deployment result
+  ansible.builtin.debug:
+    msg: "Watchtower container {{ 'started' if watchtower_result.changed else 'already running' }}"
+
+- name: Verify Watchtower container is running
+  community.docker.docker_container_info:
+    name: watchtower
+  register: watchtower_info
+
+- name: Assert Watchtower container state
+  ansible.builtin.assert:
+    that:
+      - watchtower_info.container.State.Running
+      - watchtower_info.container.HostConfig.RestartPolicy.Name == 'unless-stopped'
+    fail_msg: "Watchtower container not in expected state"
+    success_msg: "Watchtower container running with correct restart policy"

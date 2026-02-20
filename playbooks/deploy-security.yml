@@ -1,0 +1,62 @@
+---
+- name: Deploy Security Monitoring Overlay
+  hosts: vpn_servers
+  become: true
+  vars_files:
+    - ../group_vars/all/vars.yml
+    - ../group_vars/all/vault.yml
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Check Grafana container status
+      community.docker.docker_container_info:
+        name: grafana
+      register: security_overlay_grafana
+
+    - name: Assert monitoring stack is already deployed
+      ansible.builtin.assert:
+        that:
+          - security_overlay_grafana.container is defined
+          - security_overlay_grafana.container.State.Running
+        fail_msg: >
+          Monitoring stack is not deployed. Run first:
+          ansible-playbook playbooks/deploy-monitoring.yml --ask-vault-pass
+        success_msg: Monitoring stack detected, deploying security monitoring.
+
+    - name: Display target information
+      ansible.builtin.debug:
+        msg: |
+          Deploying security monitoring to: {{ ansible_host }}
+          Domain: {{ domain }}
+          Components: Falco + Tracee + Trivy + Security Findings dashboard
+
+  roles:
+    - role: security_sensors
+      tags: [security, sensors, falco, tracee]
+    - role: trivy_scanner
+      tags: [security, scanner, trivy]
+    - role: monitoring
+      tags: [security, dashboard]
+      vars:
+        monitoring_deploy_stack: false
+        monitoring_verify_stack: false
+        monitoring_security_dashboard_state: enable
+
+  post_tasks:
+    - name: Security monitoring deployment complete
+      ansible.builtin.debug:
+        msg: |
+          ================================================
+          SECURITY MONITORING DEPLOYED SUCCESSFULLY
+          ================================================
+          Active components:
+          - Falco runtime detection
+          - Tracee eBPF runtime detection
+          - Trivy scheduled vulnerability scanning
+          - Grafana dashboard: Security Findings
+
+          Open Grafana:
+          {{ 'https' if (grafana_https_enabled | default(true) | bool) else 'http' }}://{{ ansible_host }}:{{ grafana_port | default(3000) }}
+          ================================================

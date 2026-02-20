@@ -1,0 +1,16 @@
+# {{ ansible_managed }}
+# SSH hardening configuration - placed in /etc/ssh/sshd_config.d/
+# Applied after verifying SSH key authentication works
+
+# Disable password authentication (key-only access)
+PasswordAuthentication no
+
+# Allow root login only with key (not password)
+PermitRootLogin prohibit-password
+
+# Disable empty passwords
+PermitEmptyPasswords no
+
+# Disable challenge-response authentication methods
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no

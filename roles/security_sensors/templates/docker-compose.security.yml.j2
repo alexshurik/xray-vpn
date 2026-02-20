@@ -1,0 +1,55 @@
+services:
+  falco:
+    image: {{ falco_image }}
+    container_name: falco
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/host/var/run/docker.sock
+      - /dev:/host/dev
+      - /proc:/host/proc:ro
+      - /boot:/host/boot:ro
+      - /lib/modules:/host/lib/modules:ro
+      - /usr:/host/usr:ro
+      - /etc:/host/etc:ro
+    security_opt:
+      - apparmor:unconfined
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - SYS_PTRACE
+    command:
+      - /usr/bin/falco
+      - -o
+      - json_output=true
+      - -o
+      - json_include_output_property=true
+    {% if not falco_enabled %}
+    profiles: ["disabled"]
+    {% endif %}
+
+  tracee:
+    image: {{ tracee_image }}
+    container_name: tracee
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    network_mode: host
+    volumes:
+      - /etc/os-release:/etc/os-release-host:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
+      - /proc:/host/proc:ro
+      - /boot:/boot:ro
+      - /lib/modules:/lib/modules:ro
+      - /usr/src:/usr/src:ro
+    command:
+      - --events
+      - {{ tracee_events_profile }}
+      - --output
+      - json
+    {% if not tracee_enabled %}
+    profiles: ["disabled"]
+    {% endif %}

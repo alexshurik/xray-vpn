@@ -1,0 +1,57 @@
+---
+# Configure certificates for 3x-ui consumption
+# Source: https://github.com/MHSanaei/3x-ui/wiki/Configuration
+
+- name: Create certificate directory for 3x-ui
+  ansible.builtin.file:
+    path: "{{ ssl_cert_dest_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0700'
+
+- name: Copy fullchain certificate for 3x-ui
+  ansible.builtin.copy:
+    src: /etc/letsencrypt/live/{{ domain }}/fullchain.pem
+    dest: "{{ ssl_cert_dest_dir }}/fullchain.pem"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Copy private key for 3x-ui
+  ansible.builtin.copy:
+    src: /etc/letsencrypt/live/{{ domain }}/privkey.pem
+    dest: "{{ ssl_cert_dest_dir }}/privkey.pem"
+    remote_src: true
+    owner: root
+    group: root
+    mode: '0600'
+
+- name: Create deploy hook directory
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Create renewal deploy hook script
+  ansible.builtin.template:
+    src: deploy-hook.sh.j2
+    dest: /etc/letsencrypt/renewal-hooks/deploy/copy-certs-3xui.sh
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Test renewal process (dry run)
+  ansible.builtin.command:
+    cmd: certbot renew --dry-run
+  changed_when: false
+  register: renewal_test
+  when: ssl_renewal_dry_run | bool
+
+- name: Display renewal test result
+  ansible.builtin.debug:
+    msg: "Renewal test: {{ 'PASSED' if renewal_test.rc == 0 else 'FAILED' }}"
+  when: ssl_renewal_dry_run | bool

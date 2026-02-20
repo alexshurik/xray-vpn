@@ -1,0 +1,261 @@
+---
+# Security Vulnerability Remediation Playbook
+# Applies critical and high severity patches to the VPN infrastructure
+#
+# Usage:
+#   ansible-playbook playbooks/remediation/patch-vulnerabilities.yml --ask-vault-pass
+#
+# Variables:
+#   - remediation_upgrade_packages: List of system packages to upgrade (default: auto-detected)
+#   - remediation_docker_pull: Force pull new images even if present (default: true)
+#   - remediation_restart_containers: Restart containers after update (default: true)
+
+- name: Patch Critical Security Vulnerabilities
+  hosts: vpn_servers
+  become: true
+  vars_files:
+    - ../../group_vars/all/vars.yml
+    - ../../group_vars/all/vault.yml
+
+  vars:
+    # Images with known critical/high CVEs - update to patched versions
+    monitoring_images:
+      grafana: "grafana/grafana:11.6.0"
+      prometheus: "prom/prometheus:v3.2.1"
+      node_exporter: "prom/node-exporter:v1.9.1"
+
+    # System packages with known vulnerabilities to prioritize
+    critical_packages:
+      - zlib1g
+      - python3-yaml
+      - python3
+      - openssl
+      - libssl3
+      - linux-headers-generic
+
+  pre_tasks:
+    - name: Verify connection
+      ansible.builtin.ping:
+
+    - name: Display remediation plan
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          SECURITY VULNERABILITY REMEDIATION
+          =====================================================
+          Target: {{ ansible_host }}
+
+          Actions to perform:
+          1. Update system packages with known CVEs
+          2. Update monitoring stack images:
+             - Grafana: 10.3.3 -> 11.6.0 (fixes 8+ critical CVEs)
+             - Prometheus: v2.50.0 -> v3.2.1 (fixes 8+ critical CVEs)
+             - Node-exporter: v1.7.0 -> v1.9.1
+          3. Recreate containers with latest images
+          4. Verify services are healthy
+
+          WARNING: Services will have brief downtime during restart
+          =====================================================
+
+    - name: Confirm remediation
+      ansible.builtin.pause:
+        prompt: "Proceed with vulnerability patching? [yes/no]"
+      register: confirm_remediation
+      when: not ansible_check_mode
+
+    - name: Abort if not confirmed
+      ansible.builtin.fail:
+        msg: "Remediation aborted by user"
+      when:
+        - not ansible_check_mode
+        - confirm_remediation.user_input | default('no') != 'yes'
+
+  tasks:
+    # ============================================================
+    # PHASE 1: System Package Updates
+    # ============================================================
+    - name: "[PHASE 1] Update package cache"
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: "[PHASE 1] Check installed versions of critical packages"
+      ansible.builtin.command: "dpkg -l {{ item }}"
+      loop: "{{ critical_packages }}"
+      register: package_versions
+      changed_when: false
+      failed_when: false
+
+    - name: "[PHASE 1] Display current package versions"
+      ansible.builtin.debug:
+        msg: "{{ item.stdout | default('Not installed') }}"
+      loop: "{{ package_versions.results }}"
+      loop_control:
+        label: "{{ item.item }}"
+
+    - name: "[PHASE 1] Upgrade critical packages"
+      ansible.builtin.apt:
+        name: "{{ critical_packages }}"
+        state: latest
+        only_upgrade: true
+      register: package_upgrade
+
+    - name: "[PHASE 1] Display upgraded packages"
+      ansible.builtin.debug:
+        msg: |
+          Updated packages:
+          {% for pkg in package_upgrade.results | default([]) %}
+          {% if pkg.changed %}
+          - {{ pkg.name }}: {{ pkg.stdout | default('updated') }}
+          {% endif %}
+          {% endfor %}
+      when: package_upgrade.changed | default(false)
+
+    # ============================================================
+    # PHASE 2: Docker Image Updates (Monitoring Stack)
+    # ============================================================
+    - name: "[PHASE 2] Pull updated Grafana image"
+      community.docker.docker_image:
+        name: "{{ monitoring_images.grafana }}"
+        source: pull
+        force_source: true
+      register: grafana_pull
+
+    - name: "[PHASE 2] Pull updated Prometheus image"
+      community.docker.docker_image:
+        name: "{{ monitoring_images.prometheus }}"
+        source: pull
+        force_source: true
+      register: prometheus_pull
+
+    - name: "[PHASE 2] Pull updated Node Exporter image"
+      community.docker.docker_image:
+        name: "{{ monitoring_images.node_exporter }}"
+        source: pull
+        force_source: true
+      register: node_exporter_pull
+
+    # ============================================================
+    # PHASE 3: Update Compose Configurations
+    # ============================================================
+    - name: "[PHASE 3] Create monitoring compose backup"
+      ansible.builtin.copy:
+        src: "{{ monitoring_compose_dir | default('/opt/monitoring') }}/docker-compose.yml"
+        dest: "{{ monitoring_compose_dir | default('/opt/monitoring') }}/docker-compose.yml.bak.{{ ansible_date_time.epoch }}"
+        remote_src: true
+        mode: '0644'
+      ignore_errors: true
+
+    - name: "[PHASE 3] Update Grafana image in compose (inline sed)"
+      ansible.builtin.replace:
+        path: "{{ monitoring_compose_dir | default('/opt/monitoring') }}/docker-compose.yml"
+        regexp: 'image: grafana/grafana:[^\s]+'
+        replace: "image: {{ monitoring_images.grafana }}"
+        backup: true
+      register: grafana_compose_update
+
+    - name: "[PHASE 3] Update Prometheus image in compose"
+      ansible.builtin.replace:
+        path: "{{ monitoring_compose_dir | default('/opt/monitoring') }}/docker-compose.yml"
+        regexp: 'image: prom/prometheus:[^\s]+'
+        replace: "image: {{ monitoring_images.prometheus }}"
+        backup: true
+      register: prometheus_compose_update
+
+    - name: "[PHASE 3] Update Node Exporter image in compose"
+      ansible.builtin.replace:
+        path: "{{ monitoring_compose_dir | default('/opt/monitoring') }}/docker-compose.yml"
+        regexp: 'image: prom/node-exporter:[^\s]+'
+        replace: "image: {{ monitoring_images.node_exporter }}"
+        backup: true
+      register: node_exporter_compose_update
+
+    # ============================================================
+    # PHASE 4: Restart Services with New Images
+    # ============================================================
+    - name: "[PHASE 4] Restart monitoring stack with new images"
+      community.docker.docker_compose_v2:
+        project_src: "{{ monitoring_compose_dir | default('/opt/monitoring') }}"
+        state: present
+        pull: always
+        recreate: always
+      register: monitoring_restart
+      when:
+        - grafana_pull.changed or prometheus_pull.changed or node_exporter_pull.changed
+          or grafana_compose_update.changed or prometheus_compose_update.changed or node_exporter_compose_update.changed
+
+    - name: "[PHASE 4] Wait for Grafana to be healthy"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ grafana_port | default('3000') }}/api/health"
+        status_code: 200
+      register: grafana_health
+      until: grafana_health.status == 200
+      retries: 10
+      delay: 3
+      when:
+        - not ansible_check_mode
+        - monitoring_restart.changed | default(false)
+
+    - name: "[PHASE 4] Wait for Prometheus to be healthy"
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:{{ prometheus_port | default('9090') }}/-/healthy"
+        status_code: 200
+      register: prometheus_health
+      until: prometheus_health.status == 200
+      retries: 10
+      delay: 3
+      when:
+        - not ansible_check_mode
+        - monitoring_restart.changed | default(false)
+
+    # ============================================================
+    # PHASE 5: Cleanup and Verification
+    # ============================================================
+    - name: "[PHASE 5] Remove old Docker images"
+      community.docker.docker_prune:
+        images: true
+        images_filters:
+          dangling: false
+      register: image_cleanup
+
+    - name: "[PHASE 5] Display cleanup results"
+      ansible.builtin.debug:
+        msg: "Freed {{ image_cleanup.images | default(0) }} old images"
+      when: image_cleanup.images | default(0) > 0
+
+    - name: "[PHASE 5] Get running container versions"
+      ansible.builtin.command: >
+        docker ps --format 'table {{'{{.Names}}\t{{.Image}}'}}
+      changed_when: false
+      register: running_containers
+
+    - name: "[PHASE 5] Display running containers"
+      ansible.builtin.debug:
+        msg: |
+          Running containers after remediation:
+          {{ running_containers.stdout }}
+
+  post_tasks:
+    - name: Remediation summary
+      ansible.builtin.debug:
+        msg: |
+          =====================================================
+          REMEDIATION COMPLETE
+          =====================================================
+
+          System packages updated: {{ package_upgrade.changed | default(false) | ternary('Yes', 'No') }}
+
+          Images updated:
+          - Grafana: {{ grafana_pull.changed | default(false) | ternary('UPDATED', 'No change') }}
+          - Prometheus: {{ prometheus_pull.changed | default(false) | ternary('UPDATED', 'No change') }}
+          - Node Exporter: {{ node_exporter_pull.changed | default(false) | ternary('UPDATED', 'No change') }}
+
+          Services restarted: {{ monitoring_restart.changed | default(false) | ternary('Yes', 'No') }}
+
+          Next steps:
+          1. Monitor Grafana dashboard for anomalies
+          2. Run Trivy scan to verify CVE reduction:
+             grep -c 'CRITICAL' /var/lib/trivy/logs/trivy-scan.log
+          3. Review Security Findings dashboard
+
+          =====================================================

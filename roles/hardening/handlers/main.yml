@@ -1,0 +1,12 @@
+---
+# Handler for SSH service restart
+# Note: Service name is 'ssh' on Debian/Ubuntu (not 'sshd')
+- name: Restart SSH
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+
+- name: Restart Fail2ban
+  ansible.builtin.service:
+    name: fail2ban
+    state: restarted

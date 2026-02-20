@@ -1,0 +1,47 @@
+---
+- name: Assert required vault variables are defined
+  ansible.builtin.assert:
+    that:
+      - vault_vpn_admin_password is defined
+      - vault_grafana_admin_password is defined
+    fail_msg: |
+      Required vault variables are missing!
+
+      Please ensure group_vars/all/vault.yml contains:
+        vault_vpn_admin_password: "your-password"
+        vault_grafana_admin_password: "your-password"
+
+      Encrypt the file: ansible-vault encrypt group_vars/all/vault.yml
+  no_log: true
+  when: monitoring_deploy_stack | bool
+
+- name: Resolve security dashboard desired state
+  ansible.builtin.set_fact:
+    monitoring_security_dashboard_state_effective: >-
+      {%- if monitoring_security_dashboard_state in ['enable', 'disable', 'preserve'] -%}
+      {{ monitoring_security_dashboard_state }}
+      {%- elif monitoring_security_dashboard_enabled is sameas true -%}
+      enable
+      {%- elif monitoring_security_dashboard_enabled is sameas false -%}
+      disable
+      {%- else -%}
+      preserve
+      {%- endif -%}
+
+- name: Deploy monitoring stack
+  ansible.builtin.include_tasks: deploy.yml
+  when: monitoring_deploy_stack | bool
+
+- name: Deploy security dashboard overlay
+  ansible.builtin.include_tasks: security_dashboard.yml
+  when: monitoring_security_dashboard_state_effective == 'enable'
+
+- name: Remove security dashboard overlay
+  ansible.builtin.include_tasks: security_dashboard_absent.yml
+  when: monitoring_security_dashboard_state_effective == 'disable'
+
+- name: Verify monitoring services
+  ansible.builtin.include_tasks: verify.yml
+  when:
+    - monitoring_deploy_stack | bool
+    - monitoring_verify_stack | bool

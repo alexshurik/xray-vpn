@@ -1,0 +1,12 @@
+---
+# Ansible Vault encrypted secrets
+# This file will be automatically encrypted by setup playbook
+
+# SSH password (used only during bootstrap for key deployment)
+vault_ssh_password: "{{ ssh_password }}"
+
+# VPN panel admin password
+vault_vpn_admin_password: "{{ admin_password }}"
+
+# Grafana admin password
+vault_grafana_admin_password: "{{ grafana_password }}"

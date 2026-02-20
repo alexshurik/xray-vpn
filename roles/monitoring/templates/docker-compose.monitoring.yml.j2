@@ -1,0 +1,123 @@
+---
+# Monitoring stack: Prometheus + Grafana + 3x-ui-exporter
+# All services use host network for simplicity and reliability
+
+services:
+  # 3x-ui-exporter: bridges 3x-ui API to Prometheus metrics
+  3x-ui-exporter:
+    image: {{ exporter_image }}
+    container_name: 3x-ui-exporter
+    environment:
+      # Use host IP instead of host.docker.internal (Linux compatible)
+      PANEL_BASE_URL: "{{ exporter_panel_url }}"
+      PANEL_USERNAME: "{{ exporter_panel_username }}"
+      PANEL_PASSWORD: "{{ exporter_panel_password }}"
+      METRICS_PORT: "{{ exporter_port }}"
+      METRICS_IP: "0.0.0.0"
+      UPDATE_INTERVAL: "{{ exporter_update_interval }}"
+      INSECURE_SKIP_VERIFY: "true"
+    # Host network for direct access to host services
+    network_mode: host
+    restart: unless-stopped
+
+  # Prometheus: metrics storage and querying
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time={{ prometheus_retention }}'
+      - '--storage.tsdb.retention.size={{ prometheus_retention_size }}'
+      - '--web.enable-lifecycle'
+    volumes:
+      - {{ monitoring_compose_dir }}/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - {{ prometheus_data_dir }}:/prometheus
+    # Host network for access to all exporters on localhost
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Node Exporter: system metrics (CPU, RAM, Disk, Network)
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+      - '--web.listen-address=0.0.0.0:9100'
+      - '--collector.textfile.directory=/host/var/lib/node_exporter/textfile_collector'
+    volumes:
+      - /:/host:ro,rslave
+    # Host network for accurate network interface statistics
+    network_mode: host
+    pid: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Loki: centralized log storage
+  loki:
+    image: {{ loki_image }}
+    container_name: loki
+    command:
+      - '-config.file=/etc/loki/loki-config.yml'
+    volumes:
+      - {{ monitoring_compose_dir }}/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - {{ loki_data_dir }}:/loki
+    network_mode: host
+    restart: unless-stopped
+
+  # Promtail: ships Docker logs to Loki
+  promtail:
+    image: {{ promtail_image }}
+    container_name: promtail
+    command:
+      - '-config.file=/etc/promtail/promtail-config.yml'
+    volumes:
+      - {{ monitoring_compose_dir }}/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - {{ promtail_positions_dir }}:/var/lib/promtail
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/lib/trivy/logs:/var/lib/trivy/logs:ro
+    network_mode: host
+    restart: unless-stopped
+    depends_on:
+      - loki
+
+  # Grafana: visualization dashboards
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: grafana
+    user: "472:472"
+    environment:
+      - GF_SECURITY_ADMIN_USER={{ grafana_admin_user }}
+      - GF_SECURITY_ADMIN_PASSWORD={{ grafana_admin_password }}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_PROTOCOL={{ 'https' if (grafana_https_enabled | bool) else 'http' }}
+      - GF_SERVER_ROOT_URL={{ 'https' if (grafana_https_enabled | bool) else 'http' }}://{{ domain }}:{{ grafana_port }}
+{% if grafana_https_enabled | bool %}
+      - GF_SERVER_CERT_FILE=/etc/grafana/certs/fullchain.pem
+      - GF_SERVER_CERT_KEY=/etc/grafana/certs/privkey.pem
+{% endif %}
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - {{ grafana_data_dir }}:/var/lib/grafana
+      - {{ monitoring_compose_dir }}/grafana/provisioning:/etc/grafana/provisioning:ro
+{% if grafana_https_enabled | bool %}
+      - {{ grafana_cert_dir }}:/etc/grafana/certs:ro
+{% endif %}
+    # Host network to access Prometheus on localhost
+    network_mode: host
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget {% if grafana_https_enabled | bool %}--no-check-certificate {% endif %}-q --spider {{ 'https' if (grafana_https_enabled | bool) else 'http' }}://localhost:{{ grafana_port }}/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

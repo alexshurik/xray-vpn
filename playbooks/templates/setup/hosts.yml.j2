@@ -1,0 +1,8 @@
+---
+all:
+  children:
+    vpn_servers:
+      hosts:
+        vps:
+          ansible_host: {{ vps_ip }}
+          ansible_user: {{ ssh_user }}

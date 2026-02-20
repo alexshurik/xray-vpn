@@ -1,0 +1,10 @@
+/var/lib/trivy/logs/trivy-scan.log {
+    daily
+    rotate {{ trivy_logrotate_rotate }}
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    maxsize {{ trivy_logrotate_maxsize }}
+}

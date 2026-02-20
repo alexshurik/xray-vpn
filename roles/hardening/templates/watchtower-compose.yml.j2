@@ -1,0 +1,23 @@
+---
+# Watchtower - Automatic Docker container updates
+# Source: https://containrrr.dev/watchtower/
+#
+# Monitors running containers and updates them when new images are available.
+# Configured to check daily (86400s) and clean up old images.
+
+services:
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      # Remove old images after update
+      WATCHTOWER_CLEANUP: "true"
+      # Check for updates daily (86400 seconds = 24 hours)
+      WATCHTOWER_POLL_INTERVAL: "{{ watchtower_poll_interval }}"
+      # Required for Docker 29+ compatibility (containrrr/watchtower archived Dec 2025)
+      DOCKER_API_VERSION: "1.44"
+      # Timezone for logging
+      TZ: "{{ timezone | default('UTC') }}"
+    restart: unless-stopped

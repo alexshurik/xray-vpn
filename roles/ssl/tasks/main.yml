@@ -1,0 +1,9 @@
+---
+- name: Install Certbot
+  ansible.builtin.include_tasks: install.yml
+
+- name: Obtain certificate
+  ansible.builtin.include_tasks: certificate.yml
+
+- name: Configure for 3x-ui
+  ansible.builtin.include_tasks: configure.yml

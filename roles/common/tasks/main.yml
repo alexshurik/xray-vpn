@@ -1,0 +1,22 @@
+---
+- name: Update apt cache if older than cache_valid_time
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    lock_timeout: 1800
+
+- name: Upgrade all system packages
+  ansible.builtin.apt:
+    upgrade: dist
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    lock_timeout: 1800
+  when: common_dist_upgrade_enabled | bool
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ common_apt_cache_valid_time }}"
+    lock_timeout: 1800

@@ -1,0 +1,63 @@
+---
+- name: Deploy 3x-ui container
+  ansible.builtin.include_tasks: deploy.yml
+
+- name: Build desired VPN runtime configuration fingerprint
+  ansible.builtin.set_fact:
+    vpn_desired_config_fingerprint: >-
+      {{
+        {
+          'username': vpn_admin_username,
+          'password': vpn_admin_password,
+          'web_cert': vpn_cert_dir ~ '/fullchain.pem',
+          'web_key': vpn_cert_dir ~ '/privkey.pem',
+          'sub_cert': vpn_cert_dir ~ '/fullchain.pem',
+          'sub_key': vpn_cert_dir ~ '/privkey.pem'
+        } | to_json | hash('sha256')
+      }}
+  no_log: true
+
+- name: Check current VPN config state file
+  ansible.builtin.stat:
+    path: "{{ vpn_config_state_file }}"
+  register: vpn_config_state_stat
+
+- name: Read current VPN config state file
+  ansible.builtin.slurp:
+    path: "{{ vpn_config_state_file }}"
+  register: vpn_config_state_raw
+  when: vpn_config_state_stat.stat.exists
+  no_log: true
+
+- name: Parse current VPN runtime configuration fingerprint
+  ansible.builtin.set_fact:
+    vpn_current_config_fingerprint: >-
+      {{
+        (
+          (vpn_config_state_raw.content | b64decode | from_json).config_fingerprint
+          | default('')
+        )
+        if vpn_config_state_stat.stat.exists
+        else ''
+      }}
+  no_log: true
+
+- name: Decide whether VPN runtime reconfiguration is required
+  ansible.builtin.set_fact:
+    vpn_reconfigure_required: >-
+      {{
+        (vpn_reconfigure_force | bool) or
+        (vpn_current_config_fingerprint | default('') != vpn_desired_config_fingerprint)
+      }}
+  no_log: true
+
+- name: Configure SSL and credentials
+  ansible.builtin.include_tasks: configure.yml
+  when: vpn_reconfigure_required | bool
+
+- name: Create initial inbound
+  ansible.builtin.include_tasks: initialize_inbound.yml
+  when: vpn_initial_inbound_enabled | bool
+
+- name: Verify deployment
+  ansible.builtin.include_tasks: verify.yml
