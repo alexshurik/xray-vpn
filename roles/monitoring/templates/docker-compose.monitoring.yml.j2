@@ -2,6 +2,17 @@
 # Monitoring stack: Prometheus + Grafana + 3x-ui-exporter
 # All services use host network for simplicity and reliability
 
+# Per-service log rotation. daemon.json sets this globally, but only for
+# containers created after it; pinning it here guarantees the cap is applied
+# whenever a service is (re)created, regardless of daemon.json timing.
+# Prevents a misbehaving container (e.g. node-exporter error loop) from
+# filling the disk with an unbounded json log.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "{{ docker_log_max_size }}"
+    max-file: "{{ docker_log_max_file }}"
+
 services:
   # 3x-ui-exporter: bridges 3x-ui API to Prometheus metrics
   3x-ui-exporter:
@@ -19,6 +30,7 @@ services:
     # Host network for direct access to host services
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
 
   # Prometheus: metrics storage and querying
   prometheus:
@@ -36,6 +48,7 @@ services:
     # Host network for access to all exporters on localhost
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 30s
@@ -56,6 +69,7 @@ services:
     network_mode: host
     pid: host
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9100/metrics"]
       interval: 30s
@@ -73,6 +87,7 @@ services:
       - {{ loki_data_dir }}:/loki
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
 
   # Promtail: ships Docker logs to Loki
   promtail:
@@ -88,6 +103,7 @@ services:
       - /var/lib/trivy/logs:/var/lib/trivy/logs:ro
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
       - loki
 
@@ -116,6 +132,7 @@ services:
     # Host network to access Prometheus on localhost
     network_mode: host
     restart: unless-stopped
+    logging: *default-logging
     healthcheck:
       test: ["CMD-SHELL", "wget {% if grafana_https_enabled | bool %}--no-check-certificate {% endif %}-q --spider {{ 'https' if (grafana_https_enabled | bool) else 'http' }}://localhost:{{ grafana_port }}/api/health || exit 1"]
       interval: 30s
