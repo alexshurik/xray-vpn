@@ -32,7 +32,14 @@
     vpn_initial_inbound_exists: >-
       {{
         (vpn_inbounds.json.obj | default([]))
+        | selectattr('port', 'defined')
         | selectattr('port', 'equalto', (vpn_initial_inbound_port | int))
+        | list
+        | length > 0
+        or
+        (vpn_inbounds.json.obj | default([]))
+        | selectattr('port', 'defined')
+        | selectattr('port', 'equalto', (vpn_initial_inbound_port | string))
         | list
         | length > 0
       }}
@@ -47,15 +54,14 @@
         /app/bin/xray-linux-amd64 x25519 | awk -F': ' '
           /^Private(Key| key)/ { print "PRIVATE=" $2 }
           /^Public(Key| key)/  { print "PUBLIC=" $2 }
-          /^Password:/         { print "PUBLIC=" $2 }
         '
   register: vpn_reality_keys_raw
   when: not vpn_initial_inbound_exists
 
 - name: Parse Reality keys
   ansible.builtin.set_fact:
-    vpn_reality_private_key: "{{ (vpn_reality_keys_raw.stdout | regex_findall('PRIVATE=(\\S+)') | first) | default('') }}"
-    vpn_reality_public_key: "{{ (vpn_reality_keys_raw.stdout | regex_findall('PUBLIC=(\\S+)') | first) | default('') }}"
+    vpn_reality_private_key: "{{ vpn_reality_keys_raw.stdout | regex_findall('PRIVATE=(\\S+)') | default(['']) | first }}"
+    vpn_reality_public_key: "{{ vpn_reality_keys_raw.stdout | regex_findall('PUBLIC=(\\S+)') | default(['']) | first }}"
   when: not vpn_initial_inbound_exists
 
 - name: Validate Reality key generation output
