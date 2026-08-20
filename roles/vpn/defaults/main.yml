@@ -1,7 +1,8 @@
 ---
 # VPN panel configuration
 vpn_container_name: 3x-ui
-vpn_image: ghcr.io/mhsanaei/3x-ui@sha256:34c46ea6d838df981c4760bd1fe442413c2b99bbe4bb49dfa3d1bfb8a8a92496
+# 3x-ui v3.6.0 official multi-arch image index
+vpn_image: ghcr.io/mhsanaei/3x-ui@sha256:652ef431a2d351cfcc7b5dc91798de5c1dd50da8c1b44f9e3afee1c60817035e
 vpn_data_dir: /etc/x-ui
 vpn_panel_port: "2053"
 vpn_subscription_port: "2096"

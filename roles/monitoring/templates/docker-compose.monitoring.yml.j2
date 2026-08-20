@@ -111,6 +111,7 @@ services:
   grafana:
     image: grafana/grafana:10.3.3
     container_name: grafana
+    init: true
     user: "472:472"
     environment:
       - GF_SECURITY_ADMIN_USER={{ grafana_admin_user }}
