@@ -2,14 +2,27 @@
 # Create the first VLESS Reality inbound through 3x-ui API.
 # Task is idempotent: inbound is created only if target port does not exist.
 
+- name: Fetch 3x-ui CSRF token
+  ansible.builtin.uri:
+    url: "https://127.0.0.1:{{ vpn_panel_port }}/csrf-token"
+    method: GET
+    validate_certs: false
+    status_code: 200
+  register: vpn_panel_csrf
+  no_log: true
+
 - name: Login to 3x-ui API
   ansible.builtin.uri:
     url: "https://127.0.0.1:{{ vpn_panel_port }}/login"
     method: POST
+    headers:
+      Cookie: "{{ vpn_panel_csrf.cookies_string }}"
+      X-CSRF-Token: "{{ vpn_panel_csrf.json.obj }}"
     body_format: form-urlencoded
     body:
       username: "{{ vpn_admin_username }}"
       password: "{{ vpn_admin_password }}"
+      twoFactorCode: ""
     validate_certs: false
     status_code: 200
   register: vpn_panel_login
@@ -182,6 +195,7 @@
     method: POST
     headers:
       Cookie: "{{ vpn_panel_login.cookies_string }}"
+      X-CSRF-Token: "{{ vpn_panel_csrf.json.obj }}"
       X-Requested-With: XMLHttpRequest
       Content-Type: application/json
     body_format: json
