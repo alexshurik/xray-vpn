@@ -10,3 +10,7 @@ fail2ban_maxretry: 5
 
 # Watchtower settings (for 06-03)
 watchtower_poll_interval: 86400
+# true = only update containers labelled com.centurylinklabs.watchtower.enable=true
+# (3x-ui is labelled by the vpn role). Use it when the host also runs services
+# deployed by other tooling (e.g. CI) that Watchtower must not restart.
+watchtower_label_enable: false

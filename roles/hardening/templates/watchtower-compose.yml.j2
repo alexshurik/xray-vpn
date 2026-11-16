@@ -16,6 +16,10 @@ services:
       WATCHTOWER_CLEANUP: "true"
       # Check for updates daily (86400 seconds = 24 hours)
       WATCHTOWER_POLL_INTERVAL: "{{ watchtower_poll_interval }}"
+{% if watchtower_label_enable | bool %}
+      # Only update containers labelled com.centurylinklabs.watchtower.enable=true
+      WATCHTOWER_LABEL_ENABLE: "true"
+{% endif %}
       # Required for Docker 29+ compatibility (containrrr/watchtower archived Dec 2025)
       DOCKER_API_VERSION: "1.44"
       # Timezone for logging

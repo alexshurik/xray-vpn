@@ -1,8 +1,14 @@
 ---
 # VPN panel configuration
 vpn_container_name: 3x-ui
-# 3x-ui v3.6.0 official multi-arch image index
-vpn_image: ghcr.io/mhsanaei/3x-ui@sha256:652ef431a2d351cfcc7b5dc91798de5c1dd50da8c1b44f9e3afee1c60817035e
+# 3x-ui image. A moving tag lets Watchtower (hardening role) keep the panel and
+# its bundled Xray core up to date; a digest pin (@sha256:...) is never updated.
+# Before moving an existing server off an old pin, make sure no client config
+# uses the "edge" or "ios" uTLS fingerprint: Xray >= 26.10 rejects them for
+# REALITY (verified 2026-11 with 3x-ui 3.11.0 / Xray 26.10.21).
+vpn_image: ghcr.io/mhsanaei/3x-ui:latest
+# Label the 3x-ui container for Watchtower (needed when watchtower_label_enable=true)
+vpn_watchtower_enabled: true
 vpn_data_dir: /etc/x-ui
 vpn_panel_port: "2053"
 vpn_subscription_port: "2096"
@@ -32,6 +38,7 @@ vpn_inbound:
   reality_dest: "www.microsoft.com:443"
   reality_server_names:
     - "www.microsoft.com"
+  # chrome / firefox / safari only: Xray >= 26.10 rejects "edge" and "ios"
   reality_fingerprint: "chrome"
   # IMPORTANT: acceptProxyProtocol must be false for Reality to work
   # Enabling this causes connection failures

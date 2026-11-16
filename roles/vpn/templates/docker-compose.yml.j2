@@ -21,6 +21,10 @@ services:
     tty: true
     network_mode: host
     restart: unless-stopped
+{% if vpn_watchtower_enabled | default(true) | bool %}
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+{% endif %}
     logging:
       driver: json-file
       options:
