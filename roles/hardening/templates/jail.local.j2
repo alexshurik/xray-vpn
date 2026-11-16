@@ -22,5 +22,6 @@ banaction = iptables-multiport
 enabled = true
 port = {{ ssh_port }}
 filter = sshd
-logpath = /var/log/auth.log
+# Ubuntu 24.04+ has no /var/log/auth.log without rsyslog; sshd logs go to journald
+backend = systemd
 maxretry = {{ fail2ban_maxretry }}

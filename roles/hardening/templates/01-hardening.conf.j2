@@ -1,6 +1,10 @@
 # {{ ansible_managed }}
 # SSH hardening configuration - placed in /etc/ssh/sshd_config.d/
 # Applied after verifying SSH key authentication works
+#
+# The "01-" prefix matters: sshd keeps the FIRST value it reads for each
+# keyword, and Ubuntu cloud images ship 50-cloud-init.conf with
+# "PasswordAuthentication yes". A 99- file is read after it and is ignored.
 
 # Disable password authentication (key-only access)
 PasswordAuthentication no
