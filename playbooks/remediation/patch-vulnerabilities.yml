@@ -224,8 +224,12 @@
       when: image_cleanup.images | default(0) > 0
 
     - name: "[PHASE 5] Get running container versions"
-      ansible.builtin.command: >
-        docker ps --format 'table {{'{{.Names}}\t{{.Image}}'}}
+      ansible.builtin.command:
+        argv:
+          - docker
+          - ps
+          - --format
+          - '{% raw %}table {{.Names}}\t{{.Image}}{% endraw %}'
       changed_when: false
       register: running_containers
 
