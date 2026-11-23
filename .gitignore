@@ -56,3 +56,6 @@ INCIDENT_REPORT*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Cloudflare API credentials (local only)
+.cloudflare
